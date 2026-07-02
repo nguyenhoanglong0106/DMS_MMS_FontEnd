@@ -22,12 +22,14 @@ export default {
     SideBar
   },
 
+  // Khởi tạo trạng thái đăng nhập.
   data() {
     return {
       isLoggedIn: false
     }
   },
 
+  // Cung cấp chiều rộng sidebar cho layout.
   setup() {
     return {
       sidebarWidth
@@ -35,6 +37,7 @@ export default {
   },
 
   methods: {
+    // Đánh dấu người dùng đã đăng nhập.
     handleLoginSuccess() {
       this.isLoggedIn = true
     }

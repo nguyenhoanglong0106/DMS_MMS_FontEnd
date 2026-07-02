@@ -13,12 +13,14 @@ const config = {
 }
 
 //kết nối 
+// Kiểm tra cấu hình bắt buộc trước khi gọi API.
 function assertConfig() {
   if (config.apiVersion === 'v2' && !config.company) {
     throw new Error('Thiếu VUE_APP_KINETIC_COMPANY trong file .env.')
   }
 }
 
+// Tạo đường dẫn gốc theo phiên bản API Kinetic.
 function getServiceRoot() {
   assertConfig()
 
@@ -29,6 +31,7 @@ function getServiceRoot() {
   return `${config.baseUrl}/api/v2/odata/${encodeURIComponent(config.company)}`
 }
 
+// Tạo header chung cho request Kinetic.
 function getHeaders(extraHeaders = {}) {
   const headers = {
     Accept: 'application/json',
@@ -47,6 +50,7 @@ function getHeaders(extraHeaders = {}) {
   return headers
 }
 
+// Ghép URL API với query string.
 function buildUrl(path = '', query = {}) {
   const cleanPath = trimSlashes(path)
   const url = new URL(`${getServiceRoot()}/${cleanPath}`, window.location.origin)
@@ -60,6 +64,7 @@ function buildUrl(path = '', query = {}) {
   return url.toString()
 }
 
+// Gửi request đến Kinetic và xử lý lỗi chung.
 async function kineticRequest(path, options = {}) {
   const response = await fetch(buildUrl(path, options.query), {
     method: options.method || 'GET',
@@ -81,6 +86,7 @@ async function kineticRequest(path, options = {}) {
   return payload
 }
 
+// Parse JSON an toàn từ response text.
 function parseJson(text) {
   if (!text) {
     return null
@@ -95,6 +101,7 @@ function parseJson(text) {
   }
 }
 
+// Lấy thông báo lỗi dễ đọc từ payload API.
 function getErrorMessage(payload, status) {
   return payload?.ErrorMessage ||
     payload?.error?.message ||
@@ -103,22 +110,27 @@ function getErrorMessage(payload, status) {
 }
 
 //xu ly du lieu
+// Escape chuỗi để dùng trong filter OData.
 function escapeODataString(value) {
   return String(value || '').replace(/'/g, "''")
 }
 
+// Xóa dấu gạch chéo cuối URL.
 function trimTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '')
 }
 
+// Đọc biến môi trường với giá trị mặc định.
 function readEnv(name, fallback = '') {
   return String(process.env[name] || fallback).trim()
 }
 
+// Xóa dấu gạch chéo đầu và cuối path.
 function trimSlashes(value) {
   return String(value || '').replace(/^\/+|\/+$/g, '')
 }
 
+// Tạo GUID dùng làm khóa phụ.
 export function createGuid() {
   if (window.crypto && window.crypto.randomUUID) {
     return window.crypto.randomUUID()
@@ -151,6 +163,7 @@ const UD10_SELECT_FIELDS = [
   'SysRowID'
 ]
 
+// Tạo segment khóa UD10 cho request theo record.
 function getUd10KeySegment(item) {
   const company = item.Company || config.company
   return [
@@ -163,10 +176,12 @@ function getUd10KeySegment(item) {
   ].join(',')
 }
 
+// Tạo path API đến một record UD10 cụ thể.
 function getUd10RecordPath(item) {
   return `${config.servicePath}(${getUd10KeySegment(item)})`
 }
 
+// Chuẩn hóa ngày sang định dạng DateTime của Kinetic.
 function normalizeDate(value) {
   if (!value) {
     return null
@@ -175,10 +190,22 @@ function normalizeDate(value) {
   return value.length === 10 ? `${value}T00:00:00` : value
 }
 
+// Lấy phần yyyy-mm-dd để so sánh ngày.
+function getDateKey(value) {
+  return String(value || '').slice(0, 10)
+}
+
+// Tạo khóa kiểm trùng theo Key1 và Date01.
+function getDailyMenuImportKey(value) {
+  return `${DAILY_MENU_KEY1}|${getDateKey(value)}`
+}
+
+// Lấy thời gian hiện tại theo format Kinetic.
 function getCurrentKineticDateTime() {
   return new Date().toISOString().slice(0, 19)
 }
 
+// Chuyển record Kinetic sang model dùng trong màn hình.
 function fromKineticRecord(record) {
   return {
     ...record,
@@ -194,6 +221,7 @@ function fromKineticRecord(record) {
   }
 }
 
+// Chuyển form trên UI sang record UD10 gửi lên Kinetic.
 function toKineticRecord(form, sourceItem = {}) {
   const record = {
     Company: sourceItem.Company || config.company,
@@ -220,6 +248,7 @@ function toKineticRecord(form, sourceItem = {}) {
   return record
 }
 
+// Kiểm tra kết nối đến Kinetic.
 export async function testKineticConnection() {
   await kineticRequest(config.servicePath, {
     query: {
@@ -230,6 +259,7 @@ export async function testKineticConnection() {
   return true
 }
 
+// Lấy danh sách thực đơn hằng ngày.
 export async function getDailyMenus() {
   const payload = await kineticRequest(config.servicePath, {
     query: {
@@ -244,6 +274,7 @@ export async function getDailyMenus() {
   return rows.map(fromKineticRecord)
 }
 
+// Tạo mới một dòng thực đơn.
 export async function createDailyMenu(form) {
   const payload = await kineticRequest(config.servicePath, {
     method: 'POST',
@@ -253,19 +284,87 @@ export async function createDailyMenu(form) {
   return payload ? fromKineticRecord(payload) : null
 }
 
+// Lấy các khóa thực đơn đã tồn tại để tránh import trùng.
+async function getExistingDailyMenuImportKeys(forms) {
+  const dateKeys = new Set(forms.map((form) => getDateKey(form.UD10_Date01)).filter(Boolean))
+
+  if (dateKeys.size === 0) {
+    return new Set()
+  }
+
+  const existingKeys = new Set()
+  const pageSize = 1000
+  let skip = 0
+  let pageRows = []
+
+  do {
+    const payload = await kineticRequest(config.servicePath, {
+      query: {
+        $select: 'Key1,Date01',
+        $filter: `Key1 eq '${escapeODataString(DAILY_MENU_KEY1)}'`,
+        $top: pageSize,
+        $skip: skip
+      }
+    })
+
+    pageRows = Array.isArray(payload?.value) ? payload.value : []
+
+    pageRows.forEach((row) => {
+      const dateKey = getDateKey(row.Date01)
+
+      if (dateKeys.has(dateKey)) {
+        existingKeys.add(getDailyMenuImportKey(row.Date01))
+      }
+    })
+
+    skip += pageRows.length
+  } while (pageRows.length === pageSize)
+
+  return existingKeys
+}
+
+// Import nhiều dòng, bỏ qua dòng đã trùng Key1 và Date01.
 export async function importDailyMenus(forms, onProgress) {
   const results = []
+  const importedKeys = await getExistingDailyMenuImportKeys(forms)
 
   for (let index = 0; index < forms.length; index += 1) {
     const form = forms[index]
+    const importKey = getDailyMenuImportKey(form.UD10_Date01)
+
+    if (importedKeys.has(importKey)) {
+      const result = {
+        skipped: true,
+        reason: 'Đã tồn tại Key1 và Date01.'
+      }
+
+      results.push(result)
+
+      if (onProgress) {
+        onProgress({
+          index,
+          total: forms.length,
+          ...result
+        })
+      }
+
+      continue
+    }
+
     const result = await createDailyMenu(form)
-    results.push(result)
+    const importResult = {
+      skipped: false,
+      result
+    }
+
+    importedKeys.add(importKey)
+    results.push(importResult)
 
     if (onProgress) {
       onProgress({
         index,
         total: forms.length,
-        result
+        ...importResult
       })
     }
   }
@@ -273,6 +372,7 @@ export async function importDailyMenus(forms, onProgress) {
   return results
 }
 
+// Cập nhật một dòng thực đơn.
 export async function updateDailyMenu(item, form) {
   const record = toKineticRecord(form, item)
 
@@ -287,6 +387,7 @@ export async function updateDailyMenu(item, form) {
   return true
 }
 
+// Xóa một dòng thực đơn.
 export async function deleteDailyMenu(item) {
   await kineticRequest(getUd10RecordPath(item), {
     method: 'DELETE',

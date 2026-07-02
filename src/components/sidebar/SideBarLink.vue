@@ -13,6 +13,7 @@ export default {
       required: true
     }
   },
+  // Cung cấp trạng thái thu gọn cho link.
   setup() {
     return { collapsed }
   }

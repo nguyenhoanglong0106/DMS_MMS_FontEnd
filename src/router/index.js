@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MenuDaily from '@/components/view/MenuDaily.vue'
 import ImportMenuDaily from '@/components/view/ImportMenuDaily.vue'
-
+import ImportDomain from '@/components/view/ImportDomain.vue'
+import ImportInternet from '@/components/view/ImportInternet.vue'
 const routes = [
   {
     path: '/',
@@ -14,8 +15,18 @@ const routes = [
   },
   {
     path: '/importExcel',
-    name: 'Import Excel',
+    name: 'Import Daily Menu',
     component: ImportMenuDaily
+  },
+  {
+    path: '/importdomain',
+    name: 'Import Domain',
+    component: ImportDomain
+  },
+  {
+    path: '/importinternet',
+    name: 'Import Internet',
+    component: ImportInternet
   }
 ]
 

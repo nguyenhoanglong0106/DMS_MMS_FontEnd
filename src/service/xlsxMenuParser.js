@@ -16,14 +16,17 @@ const MENU_DISH_COUNT = 7
 
 const textDecoder = new TextDecoder('utf-8')
 
+// Đọc số 16-bit little-endian từ buffer.
 function readUint16(view, offset) {
   return view.getUint16(offset, true)
 }
 
+// Đọc số 32-bit little-endian từ buffer.
 function readUint32(view, offset) {
   return view.getUint32(offset, true)
 }
 
+// Tìm vị trí kết thúc central directory của file zip.
 function findEndOfCentralDirectory(view) {
   const minOffset = Math.max(0, view.byteLength - 65557)
 
@@ -36,10 +39,12 @@ function findEndOfCentralDirectory(view) {
   throw new Error('File Excel không hợp lệ.')
 }
 
+// Chuẩn hóa path trong file zip.
 function normalizeZipPath(path) {
   return path.replace(/^\/+/, '').replace(/\\/g, '/')
 }
 
+// Đọc danh sách file bên trong gói .xlsx.
 function parseZipDirectory(buffer) {
   const view = new DataView(buffer)
   const directory = new Map()
@@ -75,6 +80,7 @@ function parseZipDirectory(buffer) {
   return directory
 }
 
+// Giải nén dữ liệu deflate thô.
 async function inflateRaw(data) {
   if (!window.DecompressionStream) {
     throw new Error('Trình duyệt này chưa hỗ trợ đọc file .xlsx trực tiếp.')
@@ -84,6 +90,7 @@ async function inflateRaw(data) {
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
+// Đọc nội dung text của một file trong archive.
 async function readZipText(archive, path) {
   const entry = archive.directory.get(normalizeZipPath(path))
 
@@ -119,6 +126,7 @@ async function readZipText(archive, path) {
   return textDecoder.decode(bytes)
 }
 
+// Parse chuỗi XML sang DOM.
 function parseXml(xmlText) {
   const xml = new DOMParser().parseFromString(xmlText, 'application/xml')
 
@@ -129,21 +137,25 @@ function parseXml(xmlText) {
   return xml
 }
 
+// Lấy các node theo localName để bỏ qua namespace.
 function getElementsByLocalName(root, localName) {
   return Array.from(root.getElementsByTagName('*')).filter((node) => node.localName === localName)
 }
 
+// Lấy attribute theo localName để bỏ qua namespace.
 function getAttributeByLocalName(node, localName) {
   const attributes = Array.from(node.attributes || [])
   const attribute = attributes.find((item) => item.localName === localName)
   return attribute ? attribute.value : ''
 }
 
+// Resolve path worksheet từ quan hệ workbook.
 function resolveWorkbookTarget(target) {
   const cleanTarget = normalizeZipPath(target)
   return cleanTarget.startsWith('xl/') ? cleanTarget : `xl/${cleanTarget}`
 }
 
+// Parse workbook để lấy danh sách sheet visible.
 function parseWorkbook(workbookXml, relsXml) {
   const workbook = parseXml(workbookXml)
   const rels = parseXml(relsXml)
@@ -168,6 +180,7 @@ function parseWorkbook(workbookXml, relsXml) {
     .filter((sheet) => sheet.name && sheet.path && sheet.state !== 'hidden' && sheet.state !== 'veryHidden')
 }
 
+// Parse bảng shared strings của Excel.
 function parseSharedStrings(xmlText) {
   if (!xmlText) {
     return []
@@ -180,6 +193,7 @@ function parseSharedStrings(xmlText) {
   })
 }
 
+// Chuyển tên cột Excel sang index.
 function columnNameToIndex(cellRef) {
   const letters = String(cellRef || '').match(/[A-Z]+/i)
 
@@ -193,16 +207,19 @@ function columnNameToIndex(cellRef) {
     .reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1
 }
 
+// Chuyển mã dòng Excel sang index.
 function rowNameToIndex(cellRef) {
   const numbers = String(cellRef || '').match(/\d+/)
   return numbers ? Number(numbers[0]) - 1 : 0
 }
 
+// Lấy text của node con đầu tiên.
 function getFirstChildText(node, localName) {
   const child = getElementsByLocalName(node, localName)[0]
   return child ? child.textContent || '' : ''
 }
 
+// Parse giá trị ô Excel theo kiểu dữ liệu.
 function parseCellValue(cell, sharedStrings) {
   const type = cell.getAttribute('t')
   const rawValue = getFirstChildText(cell, 'v')
@@ -227,6 +244,7 @@ function parseCellValue(cell, sharedStrings) {
   return Number.isNaN(numberValue) ? rawValue : numberValue
 }
 
+// Parse worksheet thành mảng dòng và cột.
 function parseSheetRows(sheetXml, sharedStrings) {
   const xml = parseXml(sheetXml)
   const rows = []
@@ -246,6 +264,7 @@ function parseSheetRows(sheetXml, sharedStrings) {
   return rows.map((row) => row || [])
 }
 
+// Làm sạch text trong ô Excel.
 function cleanCellText(value) {
   if (value === undefined || value === null) {
     return ''
@@ -254,6 +273,7 @@ function cleanCellText(value) {
   return String(value).replace(/\s+/g, ' ').trim()
 }
 
+// Chuyển serial date Excel sang ISO date.
 function excelSerialToIsoDate(value) {
   const serial = Number(value)
 
@@ -267,6 +287,7 @@ function excelSerialToIsoDate(value) {
   return date.toISOString().slice(0, 10)
 }
 
+// Parse ngày dạng text dd/mm/yyyy hoặc dd-mm-yyyy.
 function parseDateText(value) {
   const text = cleanCellText(value)
   const match = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/)
@@ -282,6 +303,7 @@ function parseDateText(value) {
   return `${year}-${month}-${day}`
 }
 
+// Chuẩn hóa ngày menu từ số hoặc text.
 function normalizeMenuDate(value) {
   if (typeof value === 'number') {
     return excelSerialToIsoDate(value)
@@ -294,12 +316,14 @@ function normalizeMenuDate(value) {
   return parseDateText(value)
 }
 
+// Tính số cột có dữ liệu thực đơn.
 function getMenuColumnCount(rows) {
   const relevantRows = rows.slice(MENU_WEEKDAY_ROW, MENU_FIRST_DISH_ROW + MENU_DISH_COUNT)
   const maxLength = relevantRows.reduce((max, row) => Math.max(max, row.length), 0)
   return Math.max(maxLength, MENU_START_COLUMN)
 }
 
+// Đọc workbook .xlsx và metadata sheet.
 export async function readXlsxWorkbook(file) {
   if (!file || !file.name.toLowerCase().endsWith('.xlsx')) {
     throw new Error('Vui lòng chọn file Excel định dạng .xlsx.')
@@ -322,6 +346,7 @@ export async function readXlsxWorkbook(file) {
   }
 }
 
+// Đọc dữ liệu dòng/cột của sheet đã chọn.
 export async function readXlsxSheetRows(workbook, sheetName) {
   const sheet = workbook.sheets.find((item) => item.name === sheetName)
 
@@ -333,6 +358,7 @@ export async function readXlsxSheetRows(workbook, sheetName) {
   return parseSheetRows(sheetXml, workbook.sharedStrings)
 }
 
+// Chuyển sheet menu thành danh sách form thực đơn.
 export function buildDailyMenuRows(rows) {
   const importedRows = []
   const totalColumns = getMenuColumnCount(rows)

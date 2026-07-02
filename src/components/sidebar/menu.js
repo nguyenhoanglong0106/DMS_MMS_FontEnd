@@ -1,35 +1,41 @@
 export const sidebarMenus = [
     {
     title: 'Menu',
-    icon: 'fas menu',
+    icon: 'fas fa-utensils',
     children: [
       {
         title: 'Daily Menu',
-        icon: 'fas fa-file-alt',
+        icon: 'fas fa-calendar-alt',
         path: '/dailyMenu'
       },
       {
-        title: 'Import Excel',
-        icon: 'fas excel',
+        title: 'Import Menu',
+        icon: 'fas fa-file-excel',
         path: '/importExcel'
       }
     ]
   }
   ,
   {
-    title: 'Nofication',
-    icon: 'fas menu',
+    title: 'Domain',
+    icon: 'fas fa-network-wired',
     children: [
       {
-        title: 'Domain',
-        icon: 'fas fa-file-alt',
+        title: 'Import Domain',
+        icon: 'fas fa-file-excel',
         path: '/domain'
-      },
-      {
+      }
+    ]
+  },
+  {
         title: 'Internet',
-        icon: 'fas fa-file-alt',
+        icon: 'fas fa-globe',
+        children: [
+      {
+        title: 'Import Internet',
+        icon: 'fas fa-file-excel',
         path: '/internet'
-      },
+      }
     ]
   }
 ]

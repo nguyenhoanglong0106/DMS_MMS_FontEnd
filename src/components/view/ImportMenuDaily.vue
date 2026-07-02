@@ -1,83 +1,88 @@
 <template>
-  <main class="import-page">
-    <div class="window-title">DMS_SetUpDailyMenu</div>
-
-    <div class="menu-strip">
-      <span>File</span>
-      <span>Edit</span>
-      <span>Tools</span>
-      <span>Actions</span>
-      <span>Help</span>
-    </div>
-
-    <section class="info-panel">
-      <input
-        ref="fileInput"
-        type="file"
-        accept=".xlsx"
-        class="hidden-input"
-        @change="handleFileChange"
-      />
-
-      <button type="button" class="classic-button file-button" :disabled="loadingFile || saving" @click="openFilePicker">
-        File
-      </button>
-
-      <div class="file-fields">
-        <input class="classic-input" type="text" :value="fileName" readonly />
-        <select class="classic-input classic-select" v-model="selectedSheet" :disabled="sheets.length === 0 || saving">
-          <option v-for="sheet in sheets" :key="sheet.name" :value="sheet.name">
-            {{ sheet.name }}
-          </option>
-        </select>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <h1>Import thực đơn hằng ngày</h1>
       </div>
 
-      <button type="button" class="classic-button action-button" :disabled="!canImport" @click="importSelectedSheet">
-        {{ loadingFile ? 'Import...' : 'Import' }}
-      </button>
+      <div class="header-actions">
+        <button type="button" class="primary-button" :disabled="!canImport" @click="importVisibleSheets">
+          {{ loadingFile ? 'Đang import...' : 'Import' }}
+        </button>
 
-      <button type="button" class="classic-button save-button" :disabled="!canSave" @click="saveImportedRows">
-        {{ saving ? 'Saving...' : 'Save' }}
-      </button>
+        <button type="button" class="primary-button" :disabled="!canSave" @click="saveImportedRows">
+          {{ saving ? 'Đang lưu...' : 'Lưu' }}
+        </button>
+      </div>
+    </header>
+
+    <input
+      ref="fileInput"
+      type="file"
+      accept=".xlsx"
+      class="hidden-input"
+      @change="handleFileChange"
+    />
+
+    <section class="filter-form import-form">
+      <label class="form-field file-name-field">
+        <span>File Excel</span>
+        <input type="text" :value="fileName" readonly placeholder="Chưa chọn file" />
+      </label>
+
+      <div class="filter-actions">
+        <button type="button" class="secondary-button" :disabled="loadingFile || saving" @click="openFilePicker">
+          {{ loadingFile ? 'Đang đọc...' : 'Chọn file' }}
+        </button>
+      </div>
     </section>
 
-    <p v-if="message" class="status-message" :class="messageType">
+    <p v-if="message" :class="['message', messageType === 'error' ? 'error-message' : 'success-message']">
       {{ message }}
     </p>
 
-    <section class="grid-section">
-      <div class="grid-caption">grdUpdate</div>
+    <section class="table-wrapper">
+      <table class="data-table import-table">
+        <thead>
+          <tr>
+            <th v-for="column in gridColumns" :key="column.key" :class="{ 'action-cell': column.key === '_action' }">
+              {{ column.label }}
+            </th>
+          </tr>
+        </thead>
 
-      <div class="grid-wrapper">
-        <table class="update-grid">
-          <thead>
-            <tr>
-              <th v-for="column in gridColumns" :key="column.key">
-                {{ column.label }}
-              </th>
-            </tr>
-          </thead>
+        <tbody>
+          <tr
+            v-for="row in previewRows"
+            :key="row._id"
+            :class="{
+              failed: row._statusType === 'error',
+              skipped: row._statusType === 'skipped',
+              saved: row._statusType === 'success'
+            }"
+          >
+            <td v-for="column in gridColumns" :key="column.key" :class="{ 'action-cell': column.key === '_action' }">
+              <button
+                v-if="column.key === '_action'"
+                type="button"
+                class="row-delete-button"
+                :disabled="loadingFile || saving"
+                @click="removePreviewRow(row)"
+              >
+                Xóa
+              </button>
+              <span v-else>{{ row[column.key] }}</span>
+            </td>
+          </tr>
 
-          <tbody>
-            <tr v-for="row in previewRows" :key="row._id" :class="{ failed: row._statusType === 'error' }">
-              <td v-for="column in gridColumns" :key="column.key">
-                {{ row[column.key] }}
-              </td>
-            </tr>
-
-            <tr v-if="previewRows.length === 0">
-              <td :colspan="gridColumns.length" class="empty-cell"></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+          <tr v-if="previewRows.length === 0">
+            <td :colspan="gridColumns.length" class="no-data">
+              Không có dữ liệu
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </section>
-
-    <footer class="status-bar">
-      <span>CustPATC102 2026-06-01</span>
-      <span>CAT THAI</span>
-      <span>{{ currentDateText }}</span>
-    </footer>
   </main>
 </template>
 
@@ -93,21 +98,16 @@ const DAILY_MENU_KEY1 = 'DMS_DailyMenu'
 const DEFAULT_USER_ID = 'longn'
 
 const GRID_COLUMNS = [
-  { key: 'Company', label: 'Company' },
-  { key: 'Key1', label: 'Key1' },
-  { key: 'Key2', label: 'Key2' },
-  { key: 'Key3', label: 'Key3' },
-  { key: 'ShortChar01', label: 'ShortChar01' },
-  { key: 'Date01', label: 'Date01' },
-  { key: 'Date02', label: 'Date02' },
-  { key: 'Character01', label: 'Character01' },
-  { key: 'Character02', label: 'Character02' },
-  { key: 'Character03', label: 'Character03' },
-  { key: 'Character04', label: 'Character04' },
-  { key: 'Character05', label: 'Character05' },
-  { key: 'Character06', label: 'Character06' },
-  { key: 'Character07', label: 'Character07' },
-  { key: '_status', label: 'Status' }
+  { key: 'ShortChar01', label: 'Thứ' },
+  { key: 'Date01', label: 'Ngày Thực Đơn' },
+  { key: 'Character01', label: 'Món Chính 1' },
+  { key: 'Character02', label: 'Món Chính 2' },
+  { key: 'Character03', label: 'Món Chính 3' },
+  { key: 'Character04', label: 'Món Chính 4' },
+  { key: 'Character05', label: 'Món Chay 1' },
+  { key: 'Character06', label: 'Món Chay 2' },
+  { key: 'Character07', label: 'Tráng Miệng' },
+  { key: '_action', label: 'Thao tác' }
 ]
 
 function cleanEnv(value, fallback) {
@@ -172,23 +172,23 @@ export default {
       workbook: null,
       fileName: '',
       sheets: [],
-      selectedSheet: '',
       previewRows: [],
       loadingFile: false,
       saving: false,
       message: '',
-      messageType: '',
-      currentDateText: new Date().toLocaleString('en-GB')
+      messageType: ''
     }
   },
 
   computed: {
     canImport() {
-      return Boolean(this.workbook && this.selectedSheet && !this.loadingFile && !this.saving)
+      return Boolean(this.workbook && this.sheets.length > 0 && !this.loadingFile && !this.saving)
     },
 
     canSave() {
-      return this.previewRows.some((row) => row._statusType !== 'success') && !this.loadingFile && !this.saving
+      return this.previewRows.some((row) => !['success', 'skipped'].includes(row._statusType)) &&
+        !this.loadingFile &&
+        !this.saving
     }
   },
 
@@ -201,7 +201,6 @@ export default {
       this.workbook = null
       this.fileName = ''
       this.sheets = []
-      this.selectedSheet = ''
       this.previewRows = []
       this.message = ''
       this.messageType = ''
@@ -220,7 +219,6 @@ export default {
         this.fileName = file.name
         this.workbook = await readXlsxWorkbook(file)
         this.sheets = this.workbook.sheets
-        this.selectedSheet = this.sheets[0]?.name || ''
 
         if (this.sheets.length === 0) {
           throw new Error('File Excel không có sheet visible để import.')
@@ -230,25 +228,29 @@ export default {
         this.messageType = 'error'
         this.workbook = null
         this.sheets = []
-        this.selectedSheet = ''
       } finally {
         this.loadingFile = false
         event.target.value = ''
       }
     },
 
-    async importSelectedSheet() {
+    async importVisibleSheets() {
       try {
         this.loadingFile = true
         this.message = ''
         this.messageType = ''
 
-        const sheetRows = await readXlsxSheetRows(this.workbook, this.selectedSheet)
-        const rows = buildDailyMenuRows(sheetRows)
+        const rows = []
+
+        for (const sheet of this.sheets) {
+          const sheetRows = await readXlsxSheetRows(this.workbook, sheet.name)
+          rows.push(...buildDailyMenuRows(sheetRows))
+        }
+
         const invalidRow = rows.find((row) => !row.UD10_ShortChar01 || !row.UD10_Date01)
 
         if (rows.length === 0) {
-          throw new Error('Sheet đã chọn không có dữ liệu thực đơn.')
+          throw new Error('Các sheet visible không có dữ liệu thực đơn.')
         }
 
         if (invalidRow) {
@@ -256,7 +258,7 @@ export default {
         }
 
         this.previewRows = rows.map(createPreviewRow)
-        this.message = `Import thành công ${this.previewRows.length} dòng.`
+        this.message = `Import thành công ${this.previewRows.length} dòng từ ${this.sheets.length} sheet visible.`
         this.messageType = 'success'
       } catch (error) {
         this.previewRows = []
@@ -267,28 +269,51 @@ export default {
       }
     },
 
+    removePreviewRow(row) {
+      this.previewRows = this.previewRows.filter((item) => item._id !== row._id)
+      this.message = 'Đã xóa dòng khỏi danh sách import.'
+      this.messageType = 'success'
+    },
+
     async saveImportedRows() {
-      const rowsToSave = this.previewRows.filter((row) => row._statusType !== 'success')
+      const rowsToSave = this.previewRows.filter((row) => !['success', 'skipped'].includes(row._statusType))
 
       try {
         this.saving = true
         this.message = ''
         this.messageType = ''
 
-        await importDailyMenus(
+        const results = await importDailyMenus(
           rowsToSave.map((row) => row.form),
-          ({ index }) => {
+          ({ index, skipped, reason }) => {
             const row = rowsToSave[index]
+
+            if (skipped) {
+              row._status = reason
+              row._statusType = 'skipped'
+              return
+            }
+
             row._status = 'Saved'
             row._statusType = 'success'
           }
         )
 
-        this.previewRows = []
-        this.message = 'Update thành công!'
+        const skippedCount = results.filter((result) => result.skipped).length
+        const savedCount = results.length - skippedCount
+
+        if (savedCount === 0) {
+          this.message = `Không có dòng mới để lưu. Bỏ qua ${skippedCount} dòng đã tồn tại.`
+        } else if (skippedCount > 0) {
+          this.message = `Đã lưu ${savedCount} dòng mới, bỏ qua ${skippedCount} dòng đã tồn tại.`
+        } else {
+          this.message = `Update thành công ${savedCount} dòng!`
+        }
+
         this.messageType = 'success'
+        this.previewRows = []
       } catch (error) {
-        const pendingRow = rowsToSave.find((row) => row._status !== 'Saved')
+        const pendingRow = rowsToSave.find((row) => !['success', 'skipped'].includes(row._statusType))
 
         if (pendingRow) {
           pendingRow._status = error.message
@@ -306,198 +331,190 @@ export default {
 </script>
 
 <style scoped>
-.import-page {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #d7e9fa;
-  color: #000000;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 12px;
+.page {
+  padding: 24px;
+  text-align: left;
 }
 
-.window-title {
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #5fc3dc;
-  color: #000000;
-  font-size: 14px;
-}
-
-.menu-strip {
-  height: 42px;
+.page-header {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 6px 12px;
-  background: #b8d5f2;
-  border-bottom: 1px solid #99b8d5;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.info-panel {
-  min-height: 108px;
+.page-header h1 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 26px;
+}
+
+.header-actions,
+.filter-actions {
   display: flex;
-  align-items: flex-start;
+  gap: 8px;
+}
+
+.filter-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  align-items: end;
   gap: 12px;
-  padding: 28px 20px;
-  background: linear-gradient(#c8def2, #dcecf9);
-  border: 1px solid #9cb7ce;
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #ffffff;
 }
 
 .hidden-input {
   display: none;
 }
 
-.classic-button {
-  height: 29px;
-  min-width: 102px;
-  border: 1px solid #7f7f7f;
-  background: #dedede;
-  color: #000000;
-  font-size: 12px;
-  cursor: pointer;
-  box-shadow: inset 1px 1px 0 #ffffff;
+.filter-actions {
+  align-items: center;
 }
 
-.classic-button:disabled {
-  color: #777777;
-  cursor: not-allowed;
-}
-
-.file-button {
-  width: 58px;
-  height: 47px;
-  min-width: 58px;
-}
-
-.action-button {
-  margin-left: 0;
-}
-
-.save-button {
-  width: 128px;
-}
-
-.file-fields {
-  width: 240px;
+.form-field {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-}
-
-.classic-input {
-  height: 21px;
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #9db8d2;
-  background: #ffffff;
-  color: #000000;
-  font-size: 12px;
-}
-
-.classic-select {
-  padding-left: 2px;
-}
-
-.status-message {
-  min-height: 22px;
-  margin: 0;
-  padding: 6px 14px;
-  background: #f2f2f2;
+  gap: 6px;
   font-weight: 700;
 }
 
-.status-message.success {
-  color: #067a35;
-}
-
-.status-message.error {
-  color: #ff0000;
-}
-
-.grid-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+.form-field input,
+.form-field select {
+  height: 36px;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
   background: #ffffff;
-  border-top: 1px solid #b7b7b7;
+  color: #111827;
+  font-size: 14px;
 }
 
-.grid-caption {
-  height: 21px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #e9e9e9;
-  border-bottom: 1px solid #c8c8c8;
-  color: #000000;
+.file-name-field input {
+  background: #f8fafc;
 }
 
-.grid-wrapper {
-  flex: 1;
-  overflow: auto;
-  background: #ffffff;
+.primary-button,
+.secondary-button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
 }
 
-.update-grid {
-  min-width: 1650px;
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.primary-button {
+  background: #198754;
+  color: #ffffff;
+}
+
+.secondary-button {
+  background: #6c757d;
+  color: #ffffff;
+}
+
+.message,
+.success-message,
+.error-message {
+  margin: 12px 0;
+  font-weight: 700;
+}
+
+.success-message {
+  color: #047857;
+}
+
+.error-message {
+  color: #dc2626;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.data-table {
   width: 100%;
+  min-width: 1180px;
   border-collapse: collapse;
-  table-layout: fixed;
+  background: #ffffff;
 }
 
-.update-grid th,
-.update-grid td {
-  height: 28px;
-  padding: 4px 6px;
-  border: 1px solid #cfcfcf;
+.data-table th,
+.data-table td {
+  border: 1px solid #e5e7eb;
+  padding: 8px;
+  font-size: 14px;
+  vertical-align: top;
+}
+
+.data-table th {
+  background: #f3f4f6;
+}
+
+.import-table th,
+.import-table td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #000000;
 }
 
-.update-grid th {
-  background: #e8edf3;
+.import-table tr.failed td {
+  color: #dc2626;
+}
+
+.import-table tr.skipped td {
+  color: #b45309;
+}
+
+.import-table tr.saved td {
+  color: #047857;
+}
+
+.action-cell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.row-delete-button {
+  padding: 7px 12px;
+  border: none;
+  border-radius: 4px;
+  background: #dc3545;
+  color: #ffffff;
+  cursor: pointer;
   font-weight: 700;
 }
 
-.update-grid tr.failed td {
-  color: #c00000;
+.no-data {
+  height: 160px;
+  text-align: center;
+  color: #6b7280;
 }
 
-.empty-cell {
-  height: 520px;
-  background: #ffffff;
-}
-
-.status-bar {
-  height: 24px;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 16px;
-  padding: 0 18px;
-  background: #d8d8d8;
-  border-top: 1px solid #a9a9a9;
-}
-
-@media (max-width: 760px) {
-  .info-panel {
-    flex-wrap: wrap;
-    padding: 16px;
+@media (max-width: 720px) {
+  .page-header {
+    flex-direction: column;
   }
 
-  .file-fields {
-    width: calc(100% - 74px);
-    min-width: 180px;
+  .header-actions {
+    width: 100%;
   }
 
-  .classic-button {
-    min-width: 88px;
+  .header-actions button {
+    flex: 1;
+  }
+
+  .filter-form {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -10,6 +10,7 @@ export default {
     }
   },
 
+  // Khởi tạo trạng thái mở menu và hover.
   data() {
     return {
       open: false,
@@ -17,6 +18,7 @@ export default {
     }
   },
 
+  // Cung cấp trạng thái thu gọn sidebar.
   setup() {
     return {
       collapsed
@@ -24,10 +26,12 @@ export default {
   },
 
   computed: {
+    // Kiểm tra menu có submenu hay không.
     hasChildren() {
       return this.item.children && this.item.children.length > 0
     },
 
+    // Xác định khi nào hiển thị submenu.
     showSubmenu() {
       if (!this.hasChildren) return false
 
@@ -40,6 +44,7 @@ export default {
   },
 
   methods: {
+    // Đóng mở submenu khi sidebar đang mở rộng.
     toggleMenu() {
       if (!this.hasChildren) return
 

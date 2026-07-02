@@ -183,6 +183,7 @@ const CHARACTER_FIELDS = [
   { key: 'UD10_Character07', label: 'Tráng miệng' }
 ]
 
+// Tạo form trống cho thêm mới thực đơn.
 function createEmptyForm() {
   return {
     UD10_ShortChar01: '',
@@ -197,6 +198,7 @@ function createEmptyForm() {
   }
 }
 
+// Chuyển record API sang dữ liệu form.
 function toForm(item) {
   return {
     UD10_ShortChar01: item.UD10_ShortChar01 || '',
@@ -218,6 +220,7 @@ export default {
     Pagination
   },
 
+  // Khởi tạo trạng thái màn thực đơn.
   data() {
     return {
       characterFields: CHARACTER_FIELDS,
@@ -243,29 +246,35 @@ export default {
   },
 
   computed: {
+    // Xác định tiêu đề form theo chế độ thêm hoặc sửa.
     formTitle() {
       return this.editingItem === null ? 'Thêm thực đơn' : 'Sửa thực đơn'
     },
 
+    // Tính tổng số trang dữ liệu.
     totalPages() {
       return Math.ceil(this.items.length / this.pageSize) || 1
     },
 
+    // Lấy dữ liệu của trang hiện tại.
     pagedItems() {
       const start = (this.currentPage - 1) * this.pageSize
       return this.items.slice(start, start + this.pageSize)
     },
 
+    // Kiểm tra người dùng có lọc ngày không.
     hasDateFilter() {
       return Boolean(this.dateFilter.fromDate || this.dateFilter.toDate)
     }
   },
 
+  // Tải dữ liệu khi mở màn hình.
   mounted() {
     this.loadData()
   },
 
   methods: {
+    // Kiểm tra kết nối Kinetic.
     async testConnection() {
       try {
         this.testing = true
@@ -280,6 +289,7 @@ export default {
       }
     },
 
+    // Tải danh sách thực đơn từ API.
     async loadData() {
       try {
         this.loading = true
@@ -294,6 +304,7 @@ export default {
       }
     },
 
+    // Tìm thực đơn theo khoảng ngày.
     searchByDate() {
       this.filterError = this.validateDateFilter()
 
@@ -305,6 +316,7 @@ export default {
       this.loadData()
     },
 
+    // Xóa bộ lọc ngày và tải lại dữ liệu.
     clearDateFilter() {
       this.dateFilter = {
         fromDate: '',
@@ -315,6 +327,7 @@ export default {
       this.loadData()
     },
 
+    // Kiểm tra tính hợp lệ của khoảng ngày.
     validateDateFilter() {
       if (
         this.dateFilter.fromDate &&
@@ -327,6 +340,7 @@ export default {
       return ''
     },
 
+    // Mở form thêm mới thực đơn.
     openAddForm() {
       this.form = createEmptyForm()
       this.formError = ''
@@ -334,6 +348,7 @@ export default {
       this.showForm = true
     },
 
+    // Mở form sửa thực đơn đã chọn.
     openEditForm(item) {
       this.form = toForm(item)
       this.formError = ''
@@ -341,6 +356,7 @@ export default {
       this.showForm = true
     },
 
+    // Đóng form và reset dữ liệu.
     cancelForm() {
       this.showForm = false
       this.form = createEmptyForm()
@@ -348,6 +364,7 @@ export default {
       this.editingItem = null
     },
 
+    // Kiểm tra dữ liệu trước khi lưu.
     validateForm() {
       if (!this.form.UD10_ShortChar01) {
         return 'Vui lòng nhập thứ.'
@@ -369,6 +386,7 @@ export default {
       return ''
     },
 
+    // Lưu thêm mới hoặc cập nhật thực đơn.
     async saveItem() {
       this.formError = this.validateForm()
 
@@ -394,6 +412,7 @@ export default {
       }
     },
 
+    // Xóa thực đơn đã chọn.
     async deleteItem(item) {
       const date = this.formatDate(item.UD10_Date01)
 
@@ -418,6 +437,7 @@ export default {
       }
     },
 
+    // Định dạng ngày yyyy-mm-dd sang dd/mm/yyyy.
     formatDate(value) {
       if (!value) {
         return ''
@@ -427,10 +447,12 @@ export default {
       return `${day}/${month}/${year}`
     },
 
+    // Cập nhật trang hiện tại.
     handlePageChange(page) {
       this.currentPage = page
     },
 
+    // Cập nhật số dòng mỗi trang.
     handlePageSizeChange(size) {
       this.pageSize = size
       this.currentPage = 1

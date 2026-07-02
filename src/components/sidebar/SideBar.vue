@@ -9,6 +9,7 @@ export default {
   components: {
     SidebarItem
   },
+  // Cung cấp trạng thái sidebar cho template.
   setup() {
     return {
       collapsed,
@@ -24,7 +25,7 @@ export default {
   <div class="sidebar" :style="{ width: sidebarWidth }">
     <div class="sidebar-header">
       <div class="logo-box" :class="{ collapsed: collapsed }">
-        <span v-if="!collapsed">MMES</span>
+        <span v-if="!collapsed">QMM</span>
         <span v-else>D</span>
       </div>
     </div>

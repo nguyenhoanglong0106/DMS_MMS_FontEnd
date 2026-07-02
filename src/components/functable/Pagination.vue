@@ -59,16 +59,19 @@ export default {
   },
 
   computed: {
+    // Hiển thị page size không vượt quá tổng dòng.
     displayedPageSize() {
       return Math.min(this.pageSize, this.totalItems)
     },
 
+    // Tính tổng số trang.
     totalPages() {
       return Math.ceil(this.totalItems / this.pageSize) || 1
     }
   },
 
   methods: {
+    // Chuyển sang trang hợp lệ.
     changePage(page) {
       if (page < 1) page = 1
       if (page > this.totalPages) page = this.totalPages
@@ -76,6 +79,7 @@ export default {
       this.$emit('page-change', page)
     },
 
+    // Cập nhật số dòng mỗi trang.
     changePageSize(event) {
       let newSize = Number(event.target.value)
 

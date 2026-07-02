@@ -45,6 +45,7 @@
 
 export default {
   name: "LoginForm",
+  // Khởi tạo dữ liệu form đăng nhập.
   data() {
     return {
       username: "",
@@ -54,10 +55,16 @@ export default {
     };
   },
   methods: {
+    // Kiểm tra thông tin và phát sự kiện đăng nhập.
     handleLogin() {
       if (!this.username || !this.password) {
         this.message = "Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.";
         return;
+      }
+      if (this.username != "admin" && this.username != "admin")
+      {
+          this.message = "Sai tài khoản hoặc mật khẩu";
+          return;
       }
       this.$emit("login-success");
     },
