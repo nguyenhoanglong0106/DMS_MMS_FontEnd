@@ -1,24 +1,21 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomePage from '@/components/view/HomePage.vue'
-import Dashboard from '@/components/view/Dashboard.vue'
-import SqlConnectPage from '@/components/view/SqlConnectPage.vue'
+import MenuDaily from '@/components/view/MenuDaily.vue'
+import ImportMenuDaily from '@/components/view/ImportMenuDaily.vue'
 
 const routes = [
-
   {
-    path: '/homepage',
-    name: 'HomePage',
-    component: HomePage
+    path: '/',
+    redirect: '/login'
   },
   {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: Dashboard
+    path: '/dailyMenu',
+    name: 'Daily Menu',
+    component: MenuDaily
   },
-   {
-    path: '/SqlConnectPage',
-    name: 'SqlConnectPage',
-    component: SqlConnectPage
+  {
+    path: '/importExcel',
+    name: 'Import Excel',
+    component: ImportMenuDaily
   }
 ]
 

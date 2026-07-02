@@ -1,19 +1,62 @@
 <template>
-  <div class="dashboard-page">
-    <h2>Thực đơn hằng ngày - Epicor</h2>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <h1>Thực đơn hằng ngày</h1>
+      </div>
 
-    <div class="toolbar">
-      <button type="button" class="primary-button" :disabled="saving" @click="openAddForm">
-        Thêm
-      </button>
-    </div>
+      <div class="header-actions">
+        <button type="button" class="secondary-button" :disabled="testing" @click="testConnection">
+          {{ testing ? 'Đang kiểm tra...' : 'Load' }}
+        </button>
+
+        <button type="button" class="primary-button" :disabled="saving" @click="openAddForm">
+          Thêm
+        </button>
+      </div>
+    </header>
+
+    <p v-if="connectionMessage" class="success-message">
+      {{ connectionMessage }}
+    </p>
+
+    <form class="filter-form" @submit.prevent="searchByDate">
+      <label class="form-field">
+        <span>Từ ngày</span>
+        <input v-model="dateFilter.fromDate" type="date" />
+      </label>
+
+      <label class="form-field">
+        <span>Đến ngày</span>
+        <input v-model="dateFilter.toDate" type="date" />
+      </label>
+
+      <div class="filter-actions">
+        <button type="submit" class="primary-button" :disabled="loading">
+          Tìm
+        </button>
+
+        <button
+          type="button"
+          class="secondary-button"
+          :disabled="loading || !hasDateFilter"
+          @click="clearDateFilter"
+        >
+          Xóa lọc
+        </button>
+      </div>
+    </form>
+
+    <p v-if="filterError" class="form-error">
+      {{ filterError }}
+    </p>
 
     <form v-if="showForm" class="menu-form" @submit.prevent="saveItem">
-      <h3>{{ formTitle }}</h3>
+      <h2>{{ formTitle }}</h2>
 
-      <div v-if="formError" class="form-error">
+      <p v-if="formError" class="form-error">
         {{ formError }}
-      </div>
+      </p>
 
       <div class="form-grid">
         <label class="form-field">
@@ -26,11 +69,7 @@
           <input v-model="form.UD10_Date01" type="date" />
         </label>
 
-        <label
-          v-for="field in characterFields"
-          :key="field.key"
-          class="form-field"
-        >
+        <label v-for="field in characterFields" :key="field.key" class="form-field">
           <span>{{ field.label }}</span>
           <input v-model.trim="form[field.key]" type="text" />
         </label>
@@ -47,15 +86,15 @@
       </div>
     </form>
 
-    <div v-if="loading" class="message">
+    <p v-if="loading" class="message">
       Đang tải dữ liệu...
-    </div>
+    </p>
 
-    <div v-if="errorMessage" class="error-message">
+    <p v-if="errorMessage" class="error-message">
       {{ errorMessage }}
-    </div>
+    </p>
 
-    <div v-if="!loading && !errorMessage" class="table-wrapper">
+    <section v-if="!loading && !errorMessage" class="table-wrapper">
       <table class="data-table">
         <thead>
           <tr>
@@ -71,8 +110,9 @@
             <th>Thao tác</th>
           </tr>
         </thead>
+
         <tbody>
-          <tr v-for="item in pagedItems" :key="item.SysRowID || item.RowIdent">
+          <tr v-for="item in pagedItems" :key="item.SysRowID || item.Key1">
             <td>{{ item.UD10_ShortChar01 }}</td>
             <td>{{ formatDate(item.UD10_Date01) }}</td>
             <td>{{ item.UD10_Character01 }}</td>
@@ -86,7 +126,7 @@
               <button
                 type="button"
                 class="edit-button"
-                :disabled="saving || deletingRowId !== null || !item.SysRowID"
+                :disabled="saving || deletingKey !== ''"
                 @click="openEditForm(item)"
               >
                 Sửa
@@ -95,10 +135,10 @@
               <button
                 type="button"
                 class="delete-button"
-                :disabled="saving || deletingRowId !== null || !item.SysRowID"
+                :disabled="saving || deletingKey !== ''"
                 @click="deleteItem(item)"
               >
-                {{ deletingRowId === item.SysRowID ? 'Đang xóa...' : 'Xóa' }}
+                {{ deletingKey === item.Key1 ? 'Đang xóa...' : 'Xóa' }}
               </button>
             </td>
           </tr>
@@ -110,7 +150,7 @@
           </tr>
         </tbody>
       </table>
-    </div>
+    </section>
 
     <Pagination
       v-if="!loading && !errorMessage"
@@ -120,7 +160,7 @@
       @page-change="handlePageChange"
       @page-size-change="handlePageSizeChange"
     />
-  </div>
+  </main>
 </template>
 
 <script>
@@ -129,6 +169,7 @@ import {
   createDailyMenu,
   deleteDailyMenu,
   getDailyMenus,
+  testKineticConnection,
   updateDailyMenu
 } from '@/service/kineticApi'
 
@@ -171,7 +212,7 @@ function toForm(item) {
 }
 
 export default {
-  name: 'HomePage',
+  name: 'MenuDaily',
 
   components: {
     Pagination
@@ -184,9 +225,16 @@ export default {
       currentPage: 1,
       pageSize: 25,
       loading: false,
+      testing: false,
       saving: false,
-      deletingRowId: null,
+      deletingKey: '',
       errorMessage: '',
+      connectionMessage: '',
+      dateFilter: {
+        fromDate: '',
+        toDate: ''
+      },
+      filterError: '',
       showForm: false,
       form: createEmptyForm(),
       formError: '',
@@ -206,6 +254,10 @@ export default {
     pagedItems() {
       const start = (this.currentPage - 1) * this.pageSize
       return this.items.slice(start, start + this.pageSize)
+    },
+
+    hasDateFilter() {
+      return Boolean(this.dateFilter.fromDate || this.dateFilter.toDate)
     }
   },
 
@@ -214,17 +266,65 @@ export default {
   },
 
   methods: {
+    async testConnection() {
+      try {
+        this.testing = true
+        this.connectionMessage = ''
+        this.errorMessage = ''
+        await testKineticConnection()
+        this.connectionMessage = 'Kết nối Kinetic thành công.'
+      } catch (error) {
+        this.errorMessage = error.message
+      } finally {
+        this.testing = false
+      }
+    },
+
     async loadData() {
       try {
         this.loading = true
+        this.connectionMessage = ''
         this.errorMessage = ''
-        this.items = await getDailyMenus()
+        this.items = await getDailyMenus(this.dateFilter)
         this.currentPage = Math.min(this.currentPage, this.totalPages)
       } catch (error) {
         this.errorMessage = error.message
       } finally {
         this.loading = false
       }
+    },
+
+    searchByDate() {
+      this.filterError = this.validateDateFilter()
+
+      if (this.filterError) {
+        return
+      }
+
+      this.currentPage = 1
+      this.loadData()
+    },
+
+    clearDateFilter() {
+      this.dateFilter = {
+        fromDate: '',
+        toDate: ''
+      }
+      this.filterError = ''
+      this.currentPage = 1
+      this.loadData()
+    },
+
+    validateDateFilter() {
+      if (
+        this.dateFilter.fromDate &&
+        this.dateFilter.toDate &&
+        this.dateFilter.fromDate > this.dateFilter.toDate
+      ) {
+        return 'Từ ngày không được lớn hơn đến ngày.'
+      }
+
+      return ''
     },
 
     openAddForm() {
@@ -235,11 +335,6 @@ export default {
     },
 
     openEditForm(item) {
-      if (!item.SysRowID) {
-        this.errorMessage = 'Không tìm thấy khóa UD10 của dòng cần sửa.'
-        return
-      }
-
       this.form = toForm(item)
       this.formError = ''
       this.editingItem = item
@@ -264,7 +359,7 @@ export default {
 
       const duplicateDate = this.items.some((item) => {
         return (item.UD10_Date01 || '').slice(0, 10) === this.form.UD10_Date01 &&
-          item.SysRowID !== (this.editingItem && this.editingItem.SysRowID)
+          item.Key1 !== (this.editingItem && this.editingItem.Key1)
       })
 
       if (duplicateDate) {
@@ -307,11 +402,11 @@ export default {
       }
 
       try {
-        this.deletingRowId = item.SysRowID
+        this.deletingKey = item.Key1
         this.errorMessage = ''
         await deleteDailyMenu(item)
 
-        if (this.editingItem && this.editingItem.SysRowID === item.SysRowID) {
+        if (this.editingItem && this.editingItem.Key1 === item.Key1) {
           this.cancelForm()
         }
 
@@ -319,7 +414,7 @@ export default {
       } catch (error) {
         this.errorMessage = error.message
       } finally {
-        this.deletingRowId = null
+        this.deletingKey = ''
       }
     },
 
@@ -345,14 +440,51 @@ export default {
 </script>
 
 <style scoped>
-.dashboard-page {
-  padding: 20px;
+.page {
+  padding: 24px;
+  text-align: left;
 }
 
-.toolbar {
+.page-header {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.page-header h1 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 26px;
+}
+
+.page-header p {
+  margin: 6px 0 0;
+  color: #6b7280;
+}
+
+.header-actions,
+.form-actions,
+.filter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 220px));
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.filter-actions {
+  align-items: center;
 }
 
 .menu-form {
@@ -363,8 +495,9 @@ export default {
   background: #ffffff;
 }
 
-.menu-form h3 {
+.menu-form h2 {
   margin: 0 0 12px;
+  font-size: 20px;
 }
 
 .form-grid {
@@ -377,29 +510,23 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-weight: bold;
+  font-weight: 700;
 }
 
 .form-field input {
   padding: 8px;
-  border: 1px solid #ccc;
+  border: 1px solid #cbd5e1;
   border-radius: 4px;
   font-size: 14px;
 }
 
-.form-field strong {
-  color: red;
-}
-
-.form-error {
-  margin-bottom: 12px;
-  color: red;
-  font-weight: bold;
+.form-field strong,
+.form-error,
+.error-message {
+  color: #dc2626;
 }
 
 .form-actions {
-  display: flex;
-  gap: 8px;
   margin-top: 16px;
 }
 
@@ -407,11 +534,11 @@ export default {
 .secondary-button,
 .edit-button,
 .delete-button {
-  padding: 7px 12px;
+  padding: 8px 12px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 700;
 }
 
 button:disabled {
@@ -429,15 +556,26 @@ button:disabled {
   color: #ffffff;
 }
 
-.message {
-  margin: 12px 0;
-  color: #333;
+.edit-button {
+  background: #ffc107;
+  color: #000000;
 }
 
-.error-message {
+.delete-button {
+  background: #dc3545;
+  color: #ffffff;
+}
+
+.message,
+.success-message,
+.error-message,
+.form-error {
   margin: 12px 0;
-  color: red;
-  font-weight: bold;
+  font-weight: 700;
+}
+
+.success-message {
+  color: #047857;
 }
 
 .table-wrapper {
@@ -446,22 +584,21 @@ button:disabled {
 
 .data-table {
   width: 100%;
-  min-width: 1500px;
+  min-width: 1200px;
   border-collapse: collapse;
   background: #ffffff;
 }
 
 .data-table th,
 .data-table td {
-  border: 1px solid #ddd;
+  border: 1px solid #e5e7eb;
   padding: 8px;
   font-size: 14px;
   vertical-align: top;
 }
 
 .data-table th {
-  background: #f2f2f2;
-  font-weight: bold;
+  background: #f3f4f6;
 }
 
 .action-cell {
@@ -473,18 +610,22 @@ button:disabled {
   margin-left: 6px;
 }
 
-.edit-button {
-  background: #ffc107;
-  color: #000000;
-}
-
-.delete-button {
-  background: #dc3545;
-  color: #ffffff;
-}
-
 .no-data {
   text-align: center;
-  color: #777;
+  color: #6b7280;
+}
+
+@media (max-width: 720px) {
+  .page-header {
+    flex-direction: column;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions button {
+    flex: 1;
+  }
 }
 </style>

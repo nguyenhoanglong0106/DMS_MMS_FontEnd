@@ -1,44 +1,35 @@
 export const sidebarMenus = [
-  {
-    title: 'Home',
-    icon: 'fas fa-home',
+    {
+    title: 'Menu',
+    icon: 'fas menu',
     children: [
       {
-        title: 'Trang Chủ',
+        title: 'Daily Menu',
         icon: 'fas fa-file-alt',
-        path: '/homepage'
-      },
-    ],
-  },
-  {
-    title: 'Dashboard',
-    icon: 'fas fa-columns',
-    children: [
-      {
-        title: 'Tổng quan',
-        icon: 'fas fa-file-alt',
-        path: '/dashboard'
+        path: '/dailyMenu'
       },
       {
-        title: 'Thống kê lớp',
-        icon: 'fas fa-file-alt',
-        path: '/dashboard/class'
+        title: 'Import Excel',
+        icon: 'fas excel',
+        path: '/importExcel'
       }
     ]
-  },
+  }
+  ,
   {
-    title: 'SqlConnectPage',
-    icon: 'fas fa-chart-bar',
-    path: '/SqlConnectPage'
-  },
-  {
-    title: 'Friends',
-    icon: 'fas fa-users',
-    path: '/friends'
-  },
-  {
-    title: 'Images',
-    icon: 'fas fa-image',
-    path: '/image'
+    title: 'Nofication',
+    icon: 'fas menu',
+    children: [
+      {
+        title: 'Domain',
+        icon: 'fas fa-file-alt',
+        path: '/domain'
+      },
+      {
+        title: 'Internet',
+        icon: 'fas fa-file-alt',
+        path: '/internet'
+      },
+    ]
   }
 ]

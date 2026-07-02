@@ -33,7 +33,6 @@
         </div>
 
         <button type="submit" class="login-button">Đăng nhập</button>
-
         <p v-if="message" class="message">
           {{ message }}
         </p>
@@ -108,6 +107,7 @@ export default {
 }
 
 .form-group label {
+    text-align: left;
   display: block;
   margin-bottom: 8px;
   color: #374151;
