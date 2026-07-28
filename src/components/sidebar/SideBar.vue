@@ -25,8 +25,8 @@ export default {
   <div class="sidebar" :style="{ width: sidebarWidth }">
     <div class="sidebar-header">
       <div class="logo-box" :class="{ collapsed: collapsed }">
-        <span v-if="!collapsed">QMM</span>
-        <span v-else>D</span>
+        <span v-if="!collapsed">MMS</span>
+        <span v-else>M</span>
       </div>
     </div>
 
@@ -91,7 +91,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--font-sans);
   font-size: 100px;
 }
 

@@ -1,40 +1,48 @@
 export const sidebarMenus = [
-    {
-    title: 'Menu',
-    icon: 'fas fa-utensils',
+  {
+    title: 'Home',
+    icon: 'fas fa-home',
+    path: '/home',
+  },
+  {
+    title: 'Thiết bị máy',
+    icon: 'fas fa-cogs',
     children: [
       {
-        title: 'Daily Menu',
-        icon: 'fas fa-calendar-alt',
-        path: '/dailyMenu'
+        title: 'Đăng ký máy',
+        icon: 'fas fa-industry',
+        path: '/machines',
       },
       {
-        title: 'Import Menu',
-        icon: 'fas fa-file-excel',
-        path: '/importExcel'
-      }
-    ]
-  }
-  ,
-  {
-    title: 'Domain',
-    icon: 'fas fa-network-wired',
-    children: [
+        title: 'Giám sát',
+        icon: 'fas fa-chart-line',
+        path: '/machines/monitoring',
+      },
       {
-        title: 'Import Domain',
-        icon: 'fas fa-file-excel',
-        path: '/domain'
+        title: 'Timeline',
+        icon: 'fas fa-history',
+        path: '/machines/status-timeline',
       }
     ]
   },
   {
-        title: 'Internet',
-        icon: 'fas fa-globe',
-        children: [
+    title: 'Setting',
+    icon: 'fas fa-sliders-h',
+    children: [
       {
-        title: 'Import Internet',
-        icon: 'fas fa-file-excel',
-        path: '/internet'
+        title: 'Location',
+        icon: 'fas fa-map-marker-alt',
+        path: '/settings/locations',
+      },
+      {
+        title: 'Trạng thái',
+        icon: 'fas fa-tags',
+        path: '/settings/statuses',
+      },
+      {
+        title: 'Theme',
+        icon: 'fas fa-palette',
+        path: '/settings/theme',
       }
     ]
   }

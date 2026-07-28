@@ -1,0 +1,620 @@
+<template>
+  <main class="home-page">
+    <header class="page-header">
+      <div>
+        <h1>Home</h1>
+        <p>Tổng quan trạng thái máy theo khu vực.</p>
+      </div>
+      <div class="header-actions">
+        <span :class="socketConnected ? 'socket-online' : 'socket-offline'">
+          {{ socketConnected ? 'Socket.IO đã kết nối' : 'Socket.IO mất kết nối' }}
+        </span>
+        <button type="button" @click="loadDashboard">
+          <i class="fas fa-sync-alt" aria-hidden="true"></i>
+          <span>Reload</span>
+        </button>
+      </div>
+    </header>
+
+    <p v-if="error" class="error">{{ error }}</p>
+
+    <section class="kpi-grid">
+      <article class="kpi-card is-total">
+        <span>Tổng máy</span>
+        <strong>{{ totals.total }}</strong>
+      </article>
+      <article class="kpi-card is-location">
+        <span>Khu vực</span>
+        <strong>{{ totals.locationCount }}</strong>
+      </article>
+      <article
+        v-for="status in statusCards"
+        :key="status.key"
+        class="kpi-card"
+        :style="{ borderColor: status.color, backgroundColor: translucent(status.color, 0.12) }"
+      >
+        <span>{{ status.name }}</span>
+        <strong :style="{ color: status.color }">{{ status.count }}</strong>
+      </article>
+    </section>
+
+    <section class="home-panel">
+      <header class="panel-header">
+        <div>
+          <h2>Tổng quan khu vực</h2>
+          <span>{{ overviewText }}</span>
+        </div>
+        <RouterLink class="panel-link" to="/machines/monitoring">
+          <i class="fas fa-chart-line" aria-hidden="true"></i>
+          <span>Xem giám sát</span>
+        </RouterLink>
+      </header>
+
+      <p v-if="loading" class="empty">Đang tải dữ liệu...</p>
+      <p v-else-if="locationOverview.length === 0" class="empty">Chưa có dữ liệu khu vực.</p>
+
+      <div v-else class="area-grid">
+        <article
+          v-for="area in locationOverview"
+          :key="area.location.location_id || area.location.location_name"
+          class="area-card"
+          :class="areaHealthClass(area)"
+        >
+          <header>
+            <div>
+              <h3>{{ area.location.location_name }}</h3>
+              <span>{{ area.counts.total }} máy</span>
+            </div>
+            <RouterLink class="detail-link" :to="`/machines/monitoring?location_id=${area.location.location_id}`">
+              <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+              <span>Xem chi tiết</span>
+            </RouterLink>
+          </header>
+
+          <div class="area-status-bar" aria-hidden="true">
+            <span
+              v-for="status in areaStatusItems(area)"
+              :key="status.key"
+              :style="{ width: `${status.widthPercent}%`, backgroundColor: status.color }"
+              :title="`${status.name}: ${status.count}`"
+            ></span>
+          </div>
+
+          <div class="area-counts">
+            <span v-for="status in areaStatusItems(area)" :key="`count-${status.key}`" class="area-count">
+              <i :style="{ backgroundColor: status.color }" aria-hidden="true"></i>
+              <span>{{ status.name }}</span>
+              <strong>{{ status.count }}</strong>
+            </span>
+          </div>
+
+          <div class="machine-chip-grid">
+            <p v-if="area.machines.length === 0" class="area-empty">Chưa có máy</p>
+            <RouterLink
+              v-for="machine in area.machines"
+              :key="machine._id"
+              class="machine-chip"
+              :to="`/machines/${machine._id}`"
+              :style="{ borderColor: machineStatusColor(machine) }"
+              :title="`${machine.code} - ${machineStatusName(machine)}`"
+            >
+              <span :style="{ backgroundColor: machineStatusColor(machine) }" aria-hidden="true"></span>
+              <strong>{{ machine.code }}</strong>
+              <small>{{ machineStatusName(machine) }}</small>
+            </RouterLink>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+</template>
+
+<script setup>
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { getLocationOverview } from '@/api/machines.api'
+import { getStatuses } from '@/api/statuses.api'
+import {
+  getSocket,
+  offMachineLogCreated,
+  offMachineStatusUpdated,
+  onMachineLogCreated,
+  onMachineStatusUpdated
+} from '@/services/socket.service'
+
+const STATUS_DEFINITIONS = [
+  { key: 'online', statusId: 1, fallbackName: 'Online' },
+  { key: 'pending', statusId: 2, fallbackName: 'Pending' },
+  { key: 'error', statusId: 3, fallbackName: 'Error' },
+  { key: 'offline', statusId: 4, fallbackName: 'Offline' },
+  { key: 'noData', statusId: null, fallbackName: 'Chưa có dữ liệu', fallbackColor: '#6B7280' }
+]
+
+const locationOverview = ref([])
+const totals = ref(emptyTotals())
+const statuses = ref([])
+const loading = ref(false)
+const error = ref('')
+const socketConnected = ref(false)
+let refreshTimer = null
+
+const overviewText = computed(() => `${totals.value.locationCount} khu vực - ${totals.value.total} máy`)
+const statusCards = computed(() =>
+  STATUS_DEFINITIONS.map((status) => ({
+    ...status,
+    name: statusName(status),
+    color: statusColor(status),
+    count: totals.value[status.key] || 0
+  }))
+)
+
+function emptyTotals() {
+  return {
+    locationCount: 0,
+    total: 0,
+    online: 0,
+    pending: 0,
+    error: 0,
+    offline: 0,
+    noData: 0
+  }
+}
+
+function statusMeta(statusId) {
+  return statuses.value.find((status) => String(status.status_id) === String(statusId)) || null
+}
+
+function statusName(status) {
+  return status.statusId ? statusMeta(status.statusId)?.status_name || status.fallbackName : status.fallbackName
+}
+
+function statusColor(status) {
+  const meta = status.statusId ? statusMeta(status.statusId) : null
+
+  return meta?.color_code || meta?.color || status.fallbackColor || '#6B7280'
+}
+
+function machineStatusName(machine) {
+  return machine.currentStatus?.status_name || 'Chưa có dữ liệu'
+}
+
+function machineStatusColor(machine) {
+  return machine.currentStatus?.color_code || machine.currentStatus?.color || '#6B7280'
+}
+
+function hexToRgb(hexColor) {
+  const hex = String(hexColor || '').replace('#', '')
+
+  if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
+    return null
+  }
+
+  return {
+    red: parseInt(hex.slice(0, 2), 16),
+    green: parseInt(hex.slice(2, 4), 16),
+    blue: parseInt(hex.slice(4, 6), 16)
+  }
+}
+
+function translucent(hexColor, alpha) {
+  const rgb = hexToRgb(hexColor)
+
+  if (!rgb) {
+    return 'rgba(100, 116, 139, 0.12)'
+  }
+
+  return `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, ${alpha})`
+}
+
+function areaStatusItems(area) {
+  const total = Number(area.counts?.total) || 0
+
+  return STATUS_DEFINITIONS.map((status) => {
+    const count = Number(area.counts?.[status.key]) || 0
+
+    return {
+      ...status,
+      name: statusName(status),
+      color: statusColor(status),
+      count,
+      widthPercent: total ? Math.max((count / total) * 100, count > 0 ? 2 : 0) : 0
+    }
+  }).filter((status) => status.count > 0)
+}
+
+function areaHealthClass(area) {
+  if (area.counts.error > 0) return 'is-danger'
+  if (area.counts.pending > 0 || area.counts.offline > 0) return 'is-warning'
+  if (area.counts.noData > 0) return 'is-muted'
+
+  return 'is-healthy'
+}
+
+async function loadStatuses() {
+  const response = await getStatuses()
+  statuses.value = response.data || []
+}
+
+async function loadDashboard() {
+  try {
+    loading.value = true
+    error.value = ''
+    const response = await getLocationOverview()
+    locationOverview.value = response.data || []
+    totals.value = response.totals || emptyTotals()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+
+function scheduleDashboardReload() {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+  }
+
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null
+    loadDashboard()
+  }, 300)
+}
+
+function bindSocketState() {
+  const socket = getSocket()
+  socketConnected.value = socket.connected
+  socket.on('connect', () => {
+    socketConnected.value = true
+  })
+  socket.on('disconnect', () => {
+    socketConnected.value = false
+  })
+}
+
+onMounted(async () => {
+  await Promise.all([loadStatuses(), loadDashboard()])
+  bindSocketState()
+  onMachineLogCreated(scheduleDashboardReload)
+  onMachineStatusUpdated(scheduleDashboardReload)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+  }
+
+  offMachineLogCreated(scheduleDashboardReload)
+  offMachineStatusUpdated(scheduleDashboardReload)
+})
+</script>
+
+<style scoped>
+.home-page {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 100vh;
+  padding: 24px 28px;
+  background: var(--app-bg);
+  color: var(--text-color);
+}
+
+.page-header,
+.header-actions,
+.panel-header,
+.area-card header,
+.area-count {
+  display: flex;
+  align-items: center;
+}
+
+.page-header,
+.panel-header,
+.area-card header {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+h2 {
+  font-size: 18px;
+}
+
+h3 {
+  color: var(--text-color);
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.page-header p,
+.panel-header span,
+.area-card header span,
+.machine-chip small {
+  color: var(--muted-color);
+}
+
+.header-actions {
+  gap: 10px;
+}
+
+.header-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  border: 1px solid var(--primary-color);
+  border-radius: 8px;
+  padding: 0 13px;
+  background: var(--primary-color);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.panel-link,
+.detail-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  padding: 0 11px;
+  background: var(--surface-muted);
+  color: var(--primary-color);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.panel-link:hover,
+.detail-link:hover {
+  border-color: var(--primary-color);
+  background: rgba(15, 98, 180, 0.08);
+}
+
+.socket-online,
+.socket-offline {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.socket-online {
+  color: #16a34a;
+}
+
+.socket-offline {
+  color: #dc2626;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.kpi-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 72px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 15px;
+  background: var(--surface-bg);
+}
+
+.kpi-card span {
+  color: #334155;
+  font-weight: 800;
+}
+
+.kpi-card strong {
+  color: var(--text-color);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.kpi-card.is-total {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.kpi-card.is-location {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.home-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface-bg);
+}
+
+.area-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.area-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border-color);
+  border-left: 5px solid #94a3b8;
+  border-radius: 8px;
+  padding: 13px;
+  background: var(--surface-bg);
+}
+
+.area-card.is-healthy {
+  border-left-color: #16a34a;
+}
+
+.area-card.is-warning {
+  border-left-color: #eab308;
+}
+
+.area-card.is-danger {
+  border-left-color: #dc2626;
+}
+
+.area-card.is-muted {
+  border-left-color: #6b7280;
+}
+
+.area-status-bar {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.area-status-bar span {
+  min-width: 2px;
+}
+
+.area-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+  gap: 8px;
+}
+
+.area-count {
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: var(--surface-muted);
+  color: var(--text-color);
+  font-size: 13px;
+}
+
+.area-count i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+
+.area-count span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.machine-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.area-empty {
+  grid-column: 1 / -1;
+  padding: 10px 0;
+  color: var(--muted-color);
+  text-align: center;
+}
+
+.machine-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 7px;
+  row-gap: 2px;
+  min-height: 44px;
+  border: 1px solid var(--border-color);
+  border-left-width: 4px;
+  border-radius: 7px;
+  padding: 7px 8px;
+  background: var(--surface-bg);
+  color: var(--text-color);
+  text-decoration: none;
+}
+
+.machine-chip > span {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  grid-row: span 2;
+}
+
+.machine-chip strong,
+.machine-chip small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.machine-chip strong {
+  font-size: 14px;
+  line-height: 1.1;
+}
+
+.machine-chip small {
+  font-size: 12px;
+}
+
+.empty,
+.error {
+  padding: 22px 12px;
+  text-align: center;
+}
+
+.empty {
+  color: var(--muted-color);
+}
+
+.error {
+  color: var(--error-text);
+}
+
+@media (max-width: 1200px) {
+  .kpi-grid {
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .home-page {
+    padding: 18px;
+  }
+
+  .page-header,
+  .header-actions,
+  .panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kpi-grid,
+  .area-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

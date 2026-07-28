@@ -253,7 +253,7 @@ export default {
   width: 220px;
   padding: 8px;
 
-  background-color: #1f7a4d;
+  background-color: var(--sidebar-bg-color);
   border-radius: 10px;
 
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
