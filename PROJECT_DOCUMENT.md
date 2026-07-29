@@ -53,7 +53,7 @@ I4 = 1                 -> Online
 Trường hợp còn lại     -> Offline
 ```
 
-Nếu máy không có tín hiệu mới sau thời gian cấu hình, backend tính trạng thái hiệu lực là **Offline**.
+Nếu máy không có tín hiệu mới, backend giữ trạng thái cuối cùng đã nhận. Offline chỉ xuất hiện khi tín hiệu thật sự quy đổi ra Offline hoặc khi người dùng cấu hình trạng thái máy là Offline.
 
 ## 5. Cấu trúc dữ liệu
 
@@ -89,7 +89,7 @@ machines_count
 - API timeline trạng thái theo ngày.
 - MQTT listener.
 - Socket.IO realtime.
-- Monitor nền để phát hiện máy mất tín hiệu.
+- Lưu thời điểm tín hiệu cuối để người dùng biết máy đã dừng gửi log từ khi nào.
 
 ## 7. Chức năng frontend
 
@@ -104,7 +104,7 @@ machines_count
 
 ## 8. Điểm đã xử lý
 
-- Máy không có tín hiệu mới sẽ không còn hiển thị realtime giả.
+- Máy không có tín hiệu mới sẽ giữ trạng thái cuối cùng, không tự chuyển Offline sau 2 phút.
 - Timeline không kéo trạng thái Online qua khoảng không có dữ liệu.
 - Màu trạng thái lấy từ master data `status.color_code`.
 - Thêm trạng thái "Chưa có dữ liệu".

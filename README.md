@@ -87,7 +87,7 @@ npm run build
 ## Ghi chú giao diện
 
 - Màu trạng thái lấy từ `status.color_code` của backend.
-- Máy không có tín hiệu mới được hiển thị là Offline hoặc Chưa có dữ liệu tùy ngữ cảnh.
+- Máy không có tín hiệu mới sẽ giữ trạng thái cuối cùng; timeline chỉ vẽ tới log cuối.
 - Trang Giám sát ưu tiên hiển thị máy bất thường ở trên.
 - Lưới trạng thái phía dưới giúp xem nhanh nhiều máy trong cùng khu vực.
 - Timeline chỉ vẽ tới mốc dữ liệu thật, không kéo trạng thái sang tương lai khi chưa có log mới.
