@@ -46,6 +46,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { getMachineStatusHistory } from '@/api/machines.api'
 import { getStatuses } from '@/api/statuses.api'
+import { NO_DATA_STATUS, isNoDataStatusId } from '@/constants/machine-status'
 
 const route = useRoute()
 const history = ref([])
@@ -83,13 +84,15 @@ function statusMeta(statusId) {
 }
 
 function statusName(statusId) {
+  if (isNoDataStatusId(statusId)) return NO_DATA_STATUS.name
+
   return statusMeta(statusId)?.status_name || statusId || '-'
 }
 
 function statusColor(statusId) {
   const meta = statusMeta(statusId)
 
-  return meta?.color_code || meta?.color || '#6B7280'
+  return meta?.color_code || meta?.color || NO_DATA_STATUS.color
 }
 
 async function loadStatuses() {

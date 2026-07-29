@@ -124,6 +124,7 @@ import { useRoute } from 'vue-router'
 import { getMachineById, getMachineLogs, getMachineStatusHistory } from '@/api/machines.api'
 import { getStatuses } from '@/api/statuses.api'
 import MachineStatusBadge from '@/components/machines/MachineStatusBadge.vue'
+import { NO_DATA_STATUS, isNoDataStatusId } from '@/constants/machine-status'
 import {
   offMachineLogCreated,
   offMachineStatusUpdated,
@@ -268,20 +269,22 @@ function statusMeta(statusId) {
 }
 
 function statusName(statusId) {
+  if (isNoDataStatusId(statusId)) return NO_DATA_STATUS.name
+
   return statusMeta(statusId)?.status_name || statusId || '-'
 }
 
 function statusColor(statusId) {
   const meta = statusMeta(statusId)
 
-  return meta?.color_code || meta?.color || '#6B7280'
+  return meta?.color_code || meta?.color || NO_DATA_STATUS.color
 }
 
 // Tìm trạng thái tương ứng với thời điểm phát sinh log.
 function logStatusId(log) {
   const explicitStatusId = log?.status_id ?? log?.statusId ?? log?.currentStatus?.status_id
 
-  if (explicitStatusId) {
+  if (explicitStatusId !== undefined && explicitStatusId !== null && explicitStatusId !== '') {
     return explicitStatusId
   }
 

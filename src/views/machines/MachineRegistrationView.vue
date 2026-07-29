@@ -3,7 +3,7 @@
     <header class="page-header">
       <div>
         <h1>Đăng ký máy</h1>
-        <p>Quản lý danh sách máy, khu vực và signal key.</p>
+        <p>Quản lý danh sách máy và khu vực.</p>
       </div>
       <button
         type="button"
@@ -71,9 +71,6 @@ const editingMachine = ref(null)
 const deleteTarget = ref(null)
 const formError = ref('')
 const message = ref('')
-const REGISTRATION_FETCH_OPTIONS = {
-  includeLatestSignals: false
-}
 let messageTimer = null
 
 function showMessage(text) {
@@ -89,14 +86,21 @@ function showMessage(text) {
   }, 2500)
 }
 
-// Tải dữ liệu phụ trợ cho form/filter: khu vực.
-async function loadReferenceData() {
-  const locationResponse = await getLocations()
-  locations.value = locationResponse.data || []
+// Cập nhật trạng thái máy trên danh sách khi backend phát event đổi trạng thái.
+function handleRealtimeStatus(event) {
+  machineStore.updateMachineStatusRealtime(event)
 }
 
-function fetchRegistrationMachines(extraParams = {}) {
-  return machineStore.fetchMachines(extraParams, REGISTRATION_FETCH_OPTIONS)
+// Cập nhật log cuối và highlight máy khi backend phát event log mới.
+function handleRealtimeLog(event) {
+  machineStore.updateMachineLogRealtime(event)
+}
+
+// Tải dữ liệu phụ trợ cho form/filter: khu vực và trạng thái.
+async function loadReferenceData() {
+  const [locationResponse, statusResponse] = await Promise.all([getLocations(), getStatuses()])
+  locations.value = locationResponse.data || []
+  statuses.value = statusResponse.data || []
 }
 
 // Mở modal ở chế độ tạo máy mới.
@@ -131,63 +135,69 @@ async function saveMachine(payload, clientError) {
     formError.value = ''
 
     if (editingMachine.value) {
-      await machineStore.updateMachine(editingMachine.value._id, payload, REGISTRATION_FETCH_OPTIONS)
+      await machineStore.updateMachine(editingMachine.value._id, payload)
       showMessage('Cập nhật máy thành công.')
     } else {
-      await machineStore.createMachine(payload, REGISTRATION_FETCH_OPTIONS)
+      await machineStore.createMachine(payload)
       showMessage('Tạo máy thành công.')
     }
 
     closeForm()
+    await machineStore.fetchStatusCount()
   } catch (error) {
     formError.value = error.message
   }
 }
 
-// Xác nhận xóa máy và refresh danh sách.
+// Xác nhận xóa máy và refresh thống kê trạng thái.
 async function confirmDelete(machine) {
-  await machineStore.deleteMachine(machine._id, REGISTRATION_FETCH_OPTIONS)
+  await machineStore.deleteMachine(machine._id)
   deleteTarget.value = null
   showMessage('Đã xóa máy.')
+  await machineStore.fetchStatusCount()
 }
 
 // Áp dụng bộ lọc từ form filter và tải lại danh sách từ trang đầu.
 async function applyFilters(filters) {
-  machineStore.filters = { ...machineStore.filters, ...filters, status_id: '', noData: '', abnormal: '' }
+  machineStore.filters = { ...machineStore.filters, ...filters, noData: '', abnormal: '' }
   machineStore.pagination.page = 1
-  await fetchRegistrationMachines()
+  await machineStore.fetchMachines()
 }
 
 // Đưa filter về mặc định và tải lại danh sách.
 async function resetFilters() {
   machineStore.resetFilters()
-  await fetchRegistrationMachines()
+  await machineStore.fetchMachines()
 }
 
 // Chuyển trang trong bảng máy.
 async function changePage(page) {
   machineStore.pagination.page = page
-  await fetchRegistrationMachines()
+  await machineStore.fetchMachines()
 }
 
 // Đổi cột sort và đảo chiều sort hiện tại.
 async function changeSort(sortBy) {
   machineStore.filters.sortBy = sortBy
   machineStore.filters.sortOrder = machineStore.filters.sortOrder === 'asc' ? 'desc' : 'asc'
-  await fetchRegistrationMachines()
+  await machineStore.fetchMachines()
 }
 
 onMounted(async () => {
-  machineStore.filters.status_id = ''
   machineStore.filters.noData = ''
   machineStore.filters.abnormal = ''
-  await Promise.all([loadReferenceData(), fetchRegistrationMachines()])
+  await Promise.all([loadReferenceData(), machineStore.fetchMachines(), machineStore.fetchStatusCount()])
+  onMachineLogCreated(handleRealtimeLog)
+  onMachineStatusUpdated(handleRealtimeStatus)
 })
 
 onUnmounted(() => {
   if (messageTimer) {
     clearTimeout(messageTimer)
   }
+
+  offMachineLogCreated(handleRealtimeLog)
+  offMachineStatusUpdated(handleRealtimeStatus)
 })
 </script>
 

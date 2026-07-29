@@ -121,13 +121,12 @@ import {
   onMachineStatusUpdated
 } from '@/services/socket.service'
 
-const STATUS_DEFINITIONS = [
-  { key: 'online', statusId: 1, fallbackName: 'Online' },
-  { key: 'pending', statusId: 2, fallbackName: 'Pending' },
-  { key: 'error', statusId: 3, fallbackName: 'Error' },
-  { key: 'offline', statusId: 4, fallbackName: 'Offline' },
-  { key: 'noData', statusId: null, fallbackName: 'Chưa có dữ liệu', fallbackColor: '#6B7280' }
-]
+const NO_DATA_STATUS_CARD = {
+  key: 'noData',
+  statusId: '0',
+  fallbackName: 'Chưa có dữ liệu',
+  fallbackColor: '#6B7280'
+}
 
 const locationOverview = ref([])
 const totals = ref(emptyTotals())
@@ -138,12 +137,21 @@ const socketConnected = ref(false)
 let refreshTimer = null
 
 const overviewText = computed(() => `${totals.value.locationCount} khu vực - ${totals.value.total} máy`)
+const statusDefinitions = computed(() => [
+  ...statuses.value.map((status) => ({
+    key: `status-${status.status_id}`,
+    statusId: String(status.status_id),
+    fallbackName: status.status_name,
+    fallbackColor: status.color_code || status.color || '#6B7280'
+  })),
+  NO_DATA_STATUS_CARD
+])
 const statusCards = computed(() =>
-  STATUS_DEFINITIONS.map((status) => ({
+  statusDefinitions.value.map((status) => ({
     ...status,
     name: statusName(status),
     color: statusColor(status),
-    count: totals.value[status.key] || 0
+    count: totalForStatus(status)
   }))
 )
 
@@ -155,7 +163,9 @@ function emptyTotals() {
     pending: 0,
     error: 0,
     offline: 0,
-    noData: 0
+    other: 0,
+    noData: 0,
+    byStatus: {}
   }
 }
 
@@ -164,13 +174,23 @@ function statusMeta(statusId) {
 }
 
 function statusName(status) {
-  return status.statusId ? statusMeta(status.statusId)?.status_name || status.fallbackName : status.fallbackName
+  return statusMeta(status.statusId)?.status_name || status.fallbackName
 }
 
 function statusColor(status) {
-  const meta = status.statusId ? statusMeta(status.statusId) : null
+  const meta = statusMeta(status.statusId)
 
   return meta?.color_code || meta?.color || status.fallbackColor || '#6B7280'
+}
+
+function totalForStatus(status) {
+  const statusId = String(status.statusId)
+
+  if (statusId === NO_DATA_STATUS_CARD.statusId) {
+    return Number(totals.value.byStatus?.[statusId]) || Number(totals.value.noData) || 0
+  }
+
+  return Number(totals.value.byStatus?.[statusId]) || 0
 }
 
 function machineStatusName(machine) {
@@ -208,8 +228,12 @@ function translucent(hexColor, alpha) {
 function areaStatusItems(area) {
   const total = Number(area.counts?.total) || 0
 
-  return STATUS_DEFINITIONS.map((status) => {
-    const count = Number(area.counts?.[status.key]) || 0
+  return statusDefinitions.value.map((status) => {
+    const statusId = String(status.statusId)
+    const count =
+      statusId === NO_DATA_STATUS_CARD.statusId
+        ? Number(area.countsByStatus?.[statusId]) || Number(area.counts?.noData) || 0
+        : Number(area.countsByStatus?.[statusId]) || 0
 
     return {
       ...status,
@@ -223,7 +247,7 @@ function areaStatusItems(area) {
 
 function areaHealthClass(area) {
   if (area.counts.error > 0) return 'is-danger'
-  if (area.counts.pending > 0 || area.counts.offline > 0) return 'is-warning'
+  if (area.counts.pending > 0) return 'is-warning'
   if (area.counts.noData > 0) return 'is-muted'
 
   return 'is-healthy'

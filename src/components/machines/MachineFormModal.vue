@@ -29,6 +29,10 @@
         Signal Keys
         <input v-model="form.signalKeys" type="text" placeholder="DC1ED5A049D0" />
       </label>
+      <label>
+        Trạng thái
+        <input :value="displayStatusName" type="text" disabled />
+      </label>
       <footer>
         <button type="button" class="secondary" @click="$emit('close')">Hủy</button>
         <button type="submit" :disabled="saving">{{ saving ? 'Đang lưu...' : 'Lưu' }}</button>
@@ -38,7 +42,7 @@
 </template>
 
 <script setup>
-import { reactive, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
 
 const props = defineProps({
   show: {
@@ -70,6 +74,7 @@ const form = reactive({
   signalKeys: '',
   location_id: ''
 })
+const displayStatusName = computed(() => props.machine?.currentStatus?.status_name || 'Chưa có dữ liệu')
 
 // Đổ dữ liệu máy đang sửa vào form, hoặc reset form khi tạo mới.
 function fillForm() {
@@ -174,6 +179,12 @@ header button {
 button:disabled {
   cursor: wait;
   opacity: 0.7;
+}
+
+input:disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
 }
 
 .error {

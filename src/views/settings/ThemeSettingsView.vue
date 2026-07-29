@@ -94,7 +94,7 @@
               <strong>18</strong>
             </article>
             <article>
-              <span>Offline</span>
+              <span>Chưa dữ liệu</span>
               <strong>6</strong>
             </article>
           </div>

@@ -6,7 +6,7 @@ DMS/MMS Monitoring là hệ thống theo dõi trạng thái máy theo thời gia
 
 Mục tiêu chính:
 
-- Theo dõi máy Online, Pending, Error, Offline và Chưa có dữ liệu.
+- Theo dõi trạng thái máy theo master data và trạng thái hệ thống Chưa có dữ liệu.
 - Máy mới tạo mặc định là Chưa có dữ liệu.
 - Hiển thị dashboard tổng quan theo khu vực.
 - Cung cấp màn hình giám sát cho ca trực.
@@ -48,13 +48,15 @@ MQTT message
 ## 4. Quy tắc trạng thái
 
 ```text
-I1 = 0                 -> Error
-I2 = 1 hoặc I3 = 0     -> Pending
-I4 = 1                 -> Online
-Trường hợp còn lại     -> Offline
+I1 = 0                 -> status_id 3
+I2 = 1 hoặc I3 = 0     -> status_id 2
+I4 = 1                 -> status_id 1
+Trường hợp còn lại     -> status_id 0 (Chưa có dữ liệu)
 ```
 
-Nếu máy không có tín hiệu mới, backend giữ trạng thái cuối cùng đã nhận. Offline chỉ xuất hiện khi tín hiệu thật sự quy đổi ra Offline hoặc khi người dùng cấu hình trạng thái máy là Offline.
+`status_id = 0` là trạng thái hệ thống **Chưa có dữ liệu**, không nằm trong master data. Các `status_id >= 1` lấy tên và màu từ collection `status`.
+
+Nếu máy không có tín hiệu mới, backend giữ trạng thái cuối cùng đã nhận.
 
 ## 5. Cấu trúc dữ liệu
 
@@ -105,10 +107,10 @@ machines_count
 
 ## 8. Điểm đã xử lý
 
-- Máy không có tín hiệu mới sẽ giữ trạng thái cuối cùng, không tự chuyển Offline sau 2 phút.
+- Máy không có tín hiệu mới sẽ giữ trạng thái cuối cùng, không tự chuyển trạng thái sau 2 phút.
 - Timeline không kéo trạng thái Online qua khoảng không có dữ liệu.
 - Màu trạng thái lấy từ master data `status.color_code`.
-- Thêm trạng thái "Chưa có dữ liệu".
+- Quy ước `status_id = 0` là "Chưa có dữ liệu" cho toàn bộ project.
 - Thêm trang Home tổng quan theo khu vực.
 - Cải tiến trang Giám sát thành command center.
 - Thêm CRUD master data khu vực và trạng thái.
