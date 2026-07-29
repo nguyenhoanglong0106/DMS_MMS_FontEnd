@@ -7,6 +7,7 @@ DMS/MMS Monitoring là hệ thống theo dõi trạng thái máy theo thời gia
 Mục tiêu chính:
 
 - Theo dõi máy Online, Pending, Error, Offline và Chưa có dữ liệu.
+- Máy mới tạo mặc định là Chưa có dữ liệu.
 - Hiển thị dashboard tổng quan theo khu vực.
 - Cung cấp màn hình giám sát cho ca trực.
 - Lưu lịch sử tín hiệu và lịch sử đổi trạng thái.

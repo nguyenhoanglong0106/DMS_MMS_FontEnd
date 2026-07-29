@@ -16,6 +16,7 @@ Frontend Vue 3 + Vite cho hệ thống **DMS/MMS Monitoring**. Giao diện dùng
 - Trang Home tổng quan trạng thái máy theo khu vực.
 - Trang Giám sát máy dạng command center cho ca trực.
 - Quản lý máy, khu vực và trạng thái.
+- Máy mới tạo mặc định là Chưa có dữ liệu.
 - Cấu hình màu trạng thái bằng `color_code`.
 - Cấu hình theme giao diện.
 - Xem chi tiết máy, log tín hiệu và lịch sử trạng thái.
