@@ -89,34 +89,36 @@
     <section v-else class="master-layout">
       <form class="master-form" @submit.prevent="saveStatus">
         <header>
-          <h2>{{ editingStatus ? 'Sửa trạng thái' : 'Thêm trạng thái' }}</h2>
+          <h2>Chỉnh sửa trạng thái</h2>
           <button v-if="editingStatus" type="button" class="icon-button secondary" title="Hủy sửa" @click="resetStatusForm">
             <i class="fas fa-times" aria-hidden="true"></i>
           </button>
         </header>
 
+        <p v-if="!editingStatus" class="form-hint">Chọn một trạng thái trong bảng để chỉnh sửa.</p>
+
         <label>
-          Mã trạng thái
-          <input v-model.trim="statusForm.status_id" type="number" min="1" placeholder="1" />
+          Mã trạng thái cố định
+          <input v-model.trim="statusForm.status_id" type="text" placeholder="1" disabled />
         </label>
         <label>
           Tên trạng thái
-          <input v-model.trim="statusForm.status_name" type="text" placeholder="Online" />
+          <input v-model.trim="statusForm.status_name" type="text" placeholder="Online" :disabled="!editingStatus" />
         </label>
         <label>
           Mã màu
           <span class="color-input">
-            <input v-model="statusForm.color_code" type="color" />
-            <input v-model.trim="statusForm.color_code" type="text" placeholder="#16A34A" />
+            <input v-model="statusForm.color_code" type="color" :disabled="!editingStatus" />
+            <input v-model.trim="statusForm.color_code" type="text" placeholder="#16A34A" :disabled="!editingStatus" />
           </span>
         </label>
 
         <footer>
           <button type="button" class="secondary" @click="resetStatusForm">
             <i class="fas fa-undo" aria-hidden="true"></i>
-            <span>Đặt lại</span>
+            <span>Hủy</span>
           </button>
-          <button type="submit" :disabled="saving">
+          <button type="submit" :disabled="saving || !editingStatus">
             <i class="fas fa-save" aria-hidden="true"></i>
             <span>{{ saving ? 'Đang lưu...' : 'Lưu' }}</span>
           </button>
@@ -161,9 +163,6 @@
                   <button type="button" class="action-icon edit" title="Sửa" @click="editStatus(status)">
                     <i class="fas fa-edit" aria-hidden="true"></i>
                   </button>
-                  <button type="button" class="action-icon danger" title="Xóa" @click="removeStatus(status)">
-                    <i class="fas fa-trash-alt" aria-hidden="true"></i>
-                  </button>
                 </td>
               </tr>
             </tbody>
@@ -183,8 +182,6 @@ import {
   updateLocation
 } from '@/api/locations.api'
 import {
-  createStatus,
-  deleteStatus,
   getStatuses,
   updateStatus
 } from '@/api/statuses.api'
@@ -201,7 +198,7 @@ const activeTab = computed(() => (props.section === 'statuses' ? 'statuses' : 'l
 const pageTitle = computed(() => (activeTab.value === 'statuses' ? 'Cài đặt trạng thái' : 'Cài đặt location'))
 const pageDescription = computed(() => (
   activeTab.value === 'statuses'
-    ? 'Quản lý master data trạng thái máy.'
+    ? 'Chỉnh sửa tên và màu hiển thị của trạng thái máy.'
     : 'Quản lý master data khu vực máy.'
 ))
 const locations = ref([])
@@ -363,19 +360,18 @@ function editStatus(status) {
 }
 
 async function saveStatus() {
+  if (!editingStatus.value) {
+    setError('Vui lòng chọn trạng thái cần chỉnh sửa.')
+    return
+  }
+
   const payload = {
-    status_id: String(statusForm.status_id || '').trim(),
     status_name: statusForm.status_name.trim(),
     color_code: statusForm.color_code.trim()
   }
 
-  if (!payload.status_id || !payload.status_name) {
-    setError('Vui lòng nhập đủ mã trạng thái và tên trạng thái.')
-    return
-  }
-
-  if (!Number.isInteger(Number(payload.status_id)) || Number(payload.status_id) <= 0) {
-    setError('Mã trạng thái phải là số dương.')
+  if (!payload.status_name) {
+    setError('Vui lòng nhập tên trạng thái.')
     return
   }
 
@@ -388,40 +384,13 @@ async function saveStatus() {
   error.value = ''
 
   try {
-    if (editingStatus.value) {
-      await updateStatus(statusForm._id, payload)
-      showMessage('Cập nhật trạng thái thành công.')
-    } else {
-      await createStatus(payload)
-      showMessage('Tạo trạng thái thành công.')
-    }
+    await updateStatus(statusForm._id, payload)
+    showMessage('Cập nhật trạng thái thành công.')
 
     resetStatusForm()
     await loadStatuses()
   } catch (saveError) {
     setError(saveError.message)
-  } finally {
-    saving.value = false
-  }
-}
-
-async function removeStatus(status) {
-  if (!window.confirm(`Xóa trạng thái ${status.status_name}?`)) {
-    return
-  }
-
-  saving.value = true
-  error.value = ''
-
-  try {
-    await deleteStatus(status._id)
-    showMessage('Đã xóa trạng thái.')
-    if (statusForm._id === status._id) {
-      resetStatusForm()
-    }
-    await loadStatuses()
-  } catch (deleteError) {
-    setError(deleteError.message)
   } finally {
     saving.value = false
   }
@@ -515,6 +484,15 @@ button:disabled {
   color: #991b1b;
 }
 
+.form-hint {
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .master-layout {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
@@ -571,6 +549,12 @@ input {
 input:focus {
   border-color: #0f62b4;
   outline: 3px solid rgba(15, 98, 180, 0.14);
+}
+
+input:disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
 }
 
 .color-input {

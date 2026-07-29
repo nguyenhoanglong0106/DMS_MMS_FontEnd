@@ -62,6 +62,12 @@ import MachineDeleteDialog from '@/components/machines/MachineDeleteDialog.vue'
 import MachineFilter from '@/components/machines/MachineFilter.vue'
 import MachineFormModal from '@/components/machines/MachineFormModal.vue'
 import MachineTable from '@/components/machines/MachineTable.vue'
+import {
+  offMachineLogCreated,
+  offMachineStatusUpdated,
+  onMachineLogCreated,
+  onMachineStatusUpdated
+} from '@/services/socket.service'
 import { useMachineStore } from '@/stores/machine.store'
 
 const machineStore = useMachineStore()
@@ -96,11 +102,10 @@ function handleRealtimeLog(event) {
   machineStore.updateMachineLogRealtime(event)
 }
 
-// Tải dữ liệu phụ trợ cho form/filter: khu vực và trạng thái.
+// Tải dữ liệu phụ trợ cho form/filter.
 async function loadReferenceData() {
-  const [locationResponse, statusResponse] = await Promise.all([getLocations(), getStatuses()])
+  const locationResponse = await getLocations()
   locations.value = locationResponse.data || []
-  statuses.value = statusResponse.data || []
 }
 
 // Mở modal ở chế độ tạo máy mới.

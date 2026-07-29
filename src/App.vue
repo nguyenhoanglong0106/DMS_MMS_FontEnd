@@ -2,7 +2,7 @@
   <Login v-if="!isLoggedIn" @login-success="handleLoginSuccess" />
 
   <div v-else class="app-shell">
-    <SideBar />
+    <SideBar @logout="handleLogout" />
 
     <main class="app-content" :style="{ marginLeft: sidebarWidth }">
       <router-view />
@@ -15,6 +15,55 @@ import Login from './components/login/Login.vue'
 import SideBar from './components/sidebar/SideBar.vue'
 import { sidebarWidth } from './components/sidebar/state'
 
+const AUTH_STORAGE_KEY = 'dms_mms_login_state'
+
+function parseLoginState(value) {
+  try {
+    const state = JSON.parse(value || '{}')
+
+    return state.loggedIn === true
+  } catch (_) {
+    return false
+  }
+}
+
+function hasSavedLogin() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return (
+    parseLoginState(window.localStorage.getItem(AUTH_STORAGE_KEY)) ||
+    parseLoginState(window.sessionStorage.getItem(AUTH_STORAGE_KEY))
+  )
+}
+
+function saveLoginState({ rememberMe = false, username = '' } = {}) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const state = JSON.stringify({
+    loggedIn: true,
+    username,
+    savedAt: new Date().toISOString()
+  })
+  const targetStorage = rememberMe ? window.localStorage : window.sessionStorage
+  const otherStorage = rememberMe ? window.sessionStorage : window.localStorage
+
+  otherStorage.removeItem(AUTH_STORAGE_KEY)
+  targetStorage.setItem(AUTH_STORAGE_KEY, state)
+}
+
+function clearLoginState() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.removeItem(AUTH_STORAGE_KEY)
+  window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
+}
+
 export default {
   name: 'App',
   components: {
@@ -25,7 +74,7 @@ export default {
   // Khởi tạo trạng thái đăng nhập.
   data() {
     return {
-      isLoggedIn: false
+      isLoggedIn: hasSavedLogin()
     }
   },
 
@@ -38,8 +87,15 @@ export default {
 
   methods: {
     // Đánh dấu người dùng đã đăng nhập.
-    handleLoginSuccess() {
+    handleLoginSuccess(payload) {
+      saveLoginState(payload)
       this.isLoggedIn = true
+    },
+
+    // Xóa trạng thái đăng nhập đã lưu.
+    handleLogout() {
+      clearLoginState()
+      this.isLoggedIn = false
     }
   }
 }

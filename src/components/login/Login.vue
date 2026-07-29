@@ -50,7 +50,7 @@ export default {
     return {
       username: "",
       password: "",
-      rememberMe: false,
+      rememberMe: true,
       message: "",
     };
   },
@@ -66,7 +66,10 @@ export default {
           this.message = "Sai tài khoản hoặc mật khẩu";
           return;
       }
-      this.$emit("login-success");
+      this.$emit("login-success", {
+        rememberMe: this.rememberMe,
+        username: this.username.trim(),
+      });
     },
   },
 };

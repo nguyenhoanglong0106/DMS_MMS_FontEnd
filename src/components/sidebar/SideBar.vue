@@ -9,6 +9,8 @@ export default {
   components: {
     SidebarItem
   },
+  emits: ['logout'],
+
   // Cung cấp trạng thái sidebar cho template.
   setup() {
     return {
@@ -37,6 +39,18 @@ export default {
     :item="item"
     />
     </div>
+
+    <button
+      type="button"
+      class="logout-button"
+      :class="{ collapsed: collapsed }"
+      title="Đăng xuất"
+      aria-label="Đăng xuất"
+      @click="$emit('logout')"
+    >
+      <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
+      <span v-if="!collapsed">Đăng xuất</span>
+    </button>
 
     <span
       class="collapse-icon"
@@ -122,6 +136,42 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.logout-button {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 62px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 800;
+  transition: 0.2s ease;
+}
+
+.logout-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.logout-button.collapsed {
+  left: 50%;
+  right: auto;
+  width: 42px;
+  padding: 0;
+  transform: translateX(-50%);
+}
+
+.logout-button i {
+  font-size: 15px;
 }
 
 .collapse-icon {

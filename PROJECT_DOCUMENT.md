@@ -58,6 +58,8 @@ Trường hợp còn lại     -> status_id 0 (Chưa có dữ liệu)
 
 Nếu máy không có tín hiệu mới, backend giữ trạng thái cuối cùng đã nhận.
 
+Máy mới luôn tạo với `status_id = 0`. `status_id = 0` là trạng thái hệ thống cố định **Chưa có dữ liệu**, còn `status_id >= 1` lấy từ master data.
+
 ## 5. Cấu trúc dữ liệu
 
 ```text
@@ -84,7 +86,7 @@ machines_count
 
 - API CRUD máy.
 - API CRUD khu vực.
-- API CRUD trạng thái.
+- API danh sách trạng thái và cập nhật tên/màu trạng thái.
 - API dashboard tổng quan theo khu vực.
 - API count trạng thái.
 - API log tín hiệu.
@@ -102,7 +104,7 @@ machines_count
 - **Chi tiết máy**: thông tin máy, log mới nhất, lịch sử trạng thái.
 - **Timeline**: xem trạng thái máy theo ngày.
 - **Setting / Location**: quản lý khu vực.
-- **Setting / Trạng thái**: quản lý trạng thái và màu.
+- **Setting / Trạng thái**: chỉnh sửa tên trạng thái và màu.
 - **Setting / Theme**: đổi theme giao diện.
 
 ## 8. Điểm đã xử lý
@@ -113,7 +115,7 @@ machines_count
 - Quy ước `status_id = 0` là "Chưa có dữ liệu" cho toàn bộ project.
 - Thêm trang Home tổng quan theo khu vực.
 - Cải tiến trang Giám sát thành command center.
-- Thêm CRUD master data khu vực và trạng thái.
+- Thêm CRUD master data khu vực và chỉnh sửa tên/màu trạng thái.
 - Thêm cấu hình theme và preset Galaxy.
 
 ## 9. Cách chạy
