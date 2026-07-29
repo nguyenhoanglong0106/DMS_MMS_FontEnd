@@ -62,8 +62,8 @@
       <section class="priority-panel">
         <header class="section-header">
           <div>
-            <strong>Ưu tiên ca trực</strong>
-            <span>Error, Offline, chưa có dữ liệu và Pending</span>
+            <strong>Lưu ý</strong>
+            <span>Lỗi, tạm dừng hoặc chưa có dữ liệu</span>
           </div>
           <b>{{ priorityMachines.length }}</b>
         </header>
@@ -108,10 +108,6 @@
                   <span>{{ formatDate(lastSignalAt(machine)) }}</span>
                 </dd>
               </div>
-              <div>
-                <dt>Signal Keys</dt>
-                <dd>{{ machine.signalKeys || '-' }}</dd>
-              </div>
             </dl>
 
           </article>
@@ -122,12 +118,12 @@
         <header class="section-header">
           <div>
             <strong>Sự kiện mới nhất</strong>
-            <span>{{ recentEvents.length }} realtime event</span>
+            <span>{{ recentEventCountText }}</span>
           </div>
         </header>
 
         <p v-if="recentEvents.length === 0" class="empty-state">
-          Chưa có sự kiện realtime trong phiên này.
+          Chưa có sự kiện trạng thái.
         </p>
 
         <ul v-else class="event-list">
@@ -212,6 +208,7 @@ import {
   onMachineLogCreated,
   onMachineStatusUpdated
 } from '@/services/socket.service'
+import { isNoDataStatusId } from '@/constants/machine-status'
 import { useMachineStore } from '@/stores/machine.store'
 
 const machineStore = useMachineStore()
@@ -268,6 +265,7 @@ const displayedTotalText = computed(() => {
 
   return loaded === total ? `${total} máy trong ca hiện tại` : `Đang hiển thị ${loaded}/${total} máy`
 })
+const recentEventCountText = computed(() => `${recentEvents.value.length} sự kiện`)
 
 const gridSummaryText = computed(() => {
   const count = gridMachines.value.length
@@ -284,23 +282,22 @@ const legendStatuses = computed(() => [
 ])
 
 function laneForMachine(machine) {
-  const statusId = String(machine.currentStatus?.status_id || '')
+  const statusId = String(machine.currentStatus?.status_id ?? '')
 
-  if (!statusId || statusId === '3' || statusId === '4') return 'urgent'
+  if (isNoDataStatusId(statusId) || statusId === '3') return 'urgent'
   if (statusId === '2') return 'watch'
 
   return 'stable'
 }
 
 function statusPriority(machine) {
-  const statusId = String(machine.currentStatus?.status_id || '')
+  const statusId = String(machine.currentStatus?.status_id ?? '')
 
-  if (!statusId) return 0
+  if (isNoDataStatusId(statusId)) return 0
   if (statusId === '3') return 1
-  if (statusId === '4') return 2
-  if (statusId === '2') return 3
+  if (statusId === '2') return 2
 
-  return 4
+  return 3
 }
 
 function signalAge(machine) {
@@ -335,6 +332,68 @@ function eventField(event, payload, fields) {
   return undefined
 }
 
+function eventTime(event) {
+  const time = new Date(event?.createdAt || 0).getTime()
+
+  return Number.isNaN(time) ? 0 : time
+}
+
+function eventSignature(event) {
+  return `${event.machineCode || '-'}-${event.createdAt || '-'}-${event.text || '-'}`
+}
+
+function normalizeRecentEvents(events) {
+  const uniqueEvents = new Map()
+
+  for (const event of events) {
+    if (!event?.createdAt) {
+      continue
+    }
+
+    const signature = eventSignature(event)
+
+    if (!uniqueEvents.has(signature)) {
+      uniqueEvents.set(signature, event)
+    }
+  }
+
+  return [...uniqueEvents.values()].sort((first, second) => eventTime(second) - eventTime(first)).slice(0, 12)
+}
+
+function machineEventTime(machine) {
+  return (
+    machine.currentStatus?.updatedAt ||
+    machine.currentStatus?.updated_at ||
+    machine.lastUpdatedAt ||
+    machine.updatedAt ||
+    lastSignalAt(machine)
+  )
+}
+
+function machineStatusEvent(machine) {
+  const createdAt = machineEventTime(machine)
+
+  if (!createdAt) {
+    return null
+  }
+
+  return {
+    id: `machine-${machine._id}-${machine.currentStatus?.status_id || 'none'}-${createdAt}`,
+    machineCode: machine.code,
+    text: statusLabel(machine),
+    color: machineStatusColor(machine),
+    createdAt
+  }
+}
+
+function syncRecentEventsFromMachines() {
+  const visibleMachineCodes = new Set(machineStore.machines.map((machine) => String(machine.code)))
+  const visibleSessionEvents = recentEvents.value.filter((event) => visibleMachineCodes.has(String(event.machineCode)))
+  const machineEvents = machineStore.machines.map(machineStatusEvent).filter(Boolean)
+
+  recentEvents.value = normalizeRecentEvents([...visibleSessionEvents, ...machineEvents])
+}
+
 function addRecentEvent(event, fallbackText) {
   const payload = eventPayload(event)
   const statusColor =
@@ -347,14 +406,16 @@ function addRecentEvent(event, fallbackText) {
 
   recentEvents.value = [
     {
-      id: `${Date.now()}-${Math.random()}`,
+      id: `realtime-${machineCode}-${createdAt}-${statusNameText}`,
       machineCode,
       text: statusNameText,
       color: statusColor,
       createdAt
     },
     ...recentEvents.value
-  ].slice(0, 12)
+  ]
+
+  recentEvents.value = normalizeRecentEvents(recentEvents.value)
 }
 
 function scheduleRealtimeReload() {
@@ -364,7 +425,7 @@ function scheduleRealtimeReload() {
 
   realtimeReloadTimer = setTimeout(() => {
     realtimeReloadTimer = null
-    machineStore.fetchMachines({ limit: MONITORING_LIMIT })
+    loadMonitoringMachines()
   }, 800)
 }
 
@@ -396,7 +457,12 @@ async function reload() {
   machineStore.filters.status_id = ''
   machineStore.filters.noData = ''
   machineStore.filters.abnormal = ''
+  await loadMonitoringMachines()
+}
+
+async function loadMonitoringMachines() {
   await machineStore.fetchMachines({ limit: MONITORING_LIMIT })
+  syncRecentEventsFromMachines()
 }
 
 function statusMeta(statusId) {

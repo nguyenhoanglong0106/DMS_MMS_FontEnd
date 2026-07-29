@@ -9,14 +9,7 @@
       </option>
     </select>
 
-    <select v-model="localFilters.status_id">
-      <option value="">Tất cả trạng thái</option>
-      <option v-for="status in statuses" :key="status.status_id" :value="status.status_id">
-        {{ status.status_name }}
-      </option>
-    </select>
-
-    <button type="button" @click="$emit('apply', { ...localFilters })">Lọc</button>
+    <button type="button" @click="$emit('apply', { keyword: localFilters.keyword, location_id: localFilters.location_id })">Lọc</button>
     <button type="button" class="secondary" @click="$emit('reset')">Đặt lại</button>
   </section>
 </template>
@@ -30,10 +23,6 @@ const props = defineProps({
     required: true
   },
   locations: {
-    type: Array,
-    default: () => []
-  },
-  statuses: {
     type: Array,
     default: () => []
   }
@@ -53,7 +42,7 @@ watch(
 <style scoped>
 .machine-filter {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(150px, 190px)) auto auto;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 190px) auto auto;
   gap: 10px;
   align-items: center;
 }

@@ -3,7 +3,7 @@
     <header class="page-header">
       <div>
         <h1>Đăng ký máy</h1>
-        <p>Quản lý danh sách máy, khu vực, trạng thái hiện tại và tình trạng sử dụng.</p>
+        <p>Quản lý danh sách máy, khu vực và signal key.</p>
       </div>
       <button
         type="button"
@@ -19,7 +19,6 @@
     <MachineFilter
       :filters="machineStore.filters"
       :locations="locations"
-      :statuses="statuses"
       @apply="applyFilters"
       @reset="resetFilters"
     />
@@ -59,27 +58,22 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getLocations } from '@/api/locations.api'
-import { getStatuses } from '@/api/statuses.api'
 import MachineDeleteDialog from '@/components/machines/MachineDeleteDialog.vue'
 import MachineFilter from '@/components/machines/MachineFilter.vue'
 import MachineFormModal from '@/components/machines/MachineFormModal.vue'
 import MachineTable from '@/components/machines/MachineTable.vue'
 import { useMachineStore } from '@/stores/machine.store'
-import {
-  offMachineLogCreated,
-  offMachineStatusUpdated,
-  onMachineLogCreated,
-  onMachineStatusUpdated
-} from '@/services/socket.service'
 
 const machineStore = useMachineStore()
 const locations = ref([])
-const statuses = ref([])
 const showForm = ref(false)
 const editingMachine = ref(null)
 const deleteTarget = ref(null)
 const formError = ref('')
 const message = ref('')
+const REGISTRATION_FETCH_OPTIONS = {
+  includeLatestSignals: false
+}
 let messageTimer = null
 
 function showMessage(text) {
@@ -95,21 +89,14 @@ function showMessage(text) {
   }, 2500)
 }
 
-// Cập nhật trạng thái máy trên danh sách khi backend phát event đổi trạng thái.
-function handleRealtimeStatus(event) {
-  machineStore.updateMachineStatusRealtime(event)
-}
-
-// Cập nhật log cuối và highlight máy khi backend phát event log mới.
-function handleRealtimeLog(event) {
-  machineStore.updateMachineLogRealtime(event)
-}
-
-// Tải dữ liệu phụ trợ cho form/filter: khu vực và trạng thái.
+// Tải dữ liệu phụ trợ cho form/filter: khu vực.
 async function loadReferenceData() {
-  const [locationResponse, statusResponse] = await Promise.all([getLocations(), getStatuses()])
+  const locationResponse = await getLocations()
   locations.value = locationResponse.data || []
-  statuses.value = statusResponse.data || []
+}
+
+function fetchRegistrationMachines(extraParams = {}) {
+  return machineStore.fetchMachines(extraParams, REGISTRATION_FETCH_OPTIONS)
 }
 
 // Mở modal ở chế độ tạo máy mới.
@@ -144,69 +131,63 @@ async function saveMachine(payload, clientError) {
     formError.value = ''
 
     if (editingMachine.value) {
-      await machineStore.updateMachine(editingMachine.value._id, payload)
+      await machineStore.updateMachine(editingMachine.value._id, payload, REGISTRATION_FETCH_OPTIONS)
       showMessage('Cập nhật máy thành công.')
     } else {
-      await machineStore.createMachine(payload)
+      await machineStore.createMachine(payload, REGISTRATION_FETCH_OPTIONS)
       showMessage('Tạo máy thành công.')
     }
 
     closeForm()
-    await machineStore.fetchStatusCount()
   } catch (error) {
     formError.value = error.message
   }
 }
 
-// Xác nhận xóa máy và refresh thống kê trạng thái.
+// Xác nhận xóa máy và refresh danh sách.
 async function confirmDelete(machine) {
-  await machineStore.deleteMachine(machine._id)
+  await machineStore.deleteMachine(machine._id, REGISTRATION_FETCH_OPTIONS)
   deleteTarget.value = null
   showMessage('Đã xóa máy.')
-  await machineStore.fetchStatusCount()
 }
 
 // Áp dụng bộ lọc từ form filter và tải lại danh sách từ trang đầu.
 async function applyFilters(filters) {
-  machineStore.filters = { ...machineStore.filters, ...filters, noData: '', abnormal: '' }
+  machineStore.filters = { ...machineStore.filters, ...filters, status_id: '', noData: '', abnormal: '' }
   machineStore.pagination.page = 1
-  await machineStore.fetchMachines()
+  await fetchRegistrationMachines()
 }
 
 // Đưa filter về mặc định và tải lại danh sách.
 async function resetFilters() {
   machineStore.resetFilters()
-  await machineStore.fetchMachines()
+  await fetchRegistrationMachines()
 }
 
 // Chuyển trang trong bảng máy.
 async function changePage(page) {
   machineStore.pagination.page = page
-  await machineStore.fetchMachines()
+  await fetchRegistrationMachines()
 }
 
 // Đổi cột sort và đảo chiều sort hiện tại.
 async function changeSort(sortBy) {
   machineStore.filters.sortBy = sortBy
   machineStore.filters.sortOrder = machineStore.filters.sortOrder === 'asc' ? 'desc' : 'asc'
-  await machineStore.fetchMachines()
+  await fetchRegistrationMachines()
 }
 
 onMounted(async () => {
+  machineStore.filters.status_id = ''
   machineStore.filters.noData = ''
   machineStore.filters.abnormal = ''
-  await Promise.all([loadReferenceData(), machineStore.fetchMachines(), machineStore.fetchStatusCount()])
-  onMachineLogCreated(handleRealtimeLog)
-  onMachineStatusUpdated(handleRealtimeStatus)
+  await Promise.all([loadReferenceData(), fetchRegistrationMachines()])
 })
 
 onUnmounted(() => {
   if (messageTimer) {
     clearTimeout(messageTimer)
   }
-
-  offMachineLogCreated(handleRealtimeLog)
-  offMachineStatusUpdated(handleRealtimeStatus)
 })
 </script>
 

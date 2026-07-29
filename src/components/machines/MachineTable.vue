@@ -8,17 +8,15 @@
           <th @click="$emit('sort', 'name')">Tên máy</th>
           <th>Khu vực</th>
           <th>Signal Keys</th>
-          <th>Trạng thái</th>
-          <th>Tín hiệu cuối</th>
           <th>Thao tác</th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="loading">
-          <td colspan="8" class="empty">Đang tải dữ liệu...</td>
+          <td colspan="6" class="empty">Đang tải dữ liệu...</td>
         </tr>
         <tr v-else-if="machines.length === 0">
-          <td colspan="8" class="empty">Chưa có máy phù hợp.</td>
+          <td colspan="6" class="empty">Chưa có máy phù hợp.</td>
         </tr>
         <tr v-for="(machine, index) in machines" v-else :key="machine._id">
           <td>{{ rowIndex(index) }}</td>
@@ -26,15 +24,6 @@
           <td>{{ machine.name }}</td>
           <td>{{ machine.location?.location_name || '-' }}</td>
           <td>{{ machine.signalKeys }}</td>
-          <td>
-            <MachineStatusBadge
-              :status-id="machine.currentStatus?.status_id"
-              :status-name="machine.currentStatus?.status_name"
-              :status-color="machine.currentStatus?.color"
-              size="sm"
-            />
-          </td>
-          <td>{{ formatDate(machine.lastSignalAt || machine.lastLog?.createdAt || machine.latestLog?.createdAt) }}</td>
           <td class="actions">
             <RouterLink
               :to="`/machines/${machine._id}`"
@@ -86,8 +75,6 @@
 </template>
 
 <script setup>
-import MachineStatusBadge from './MachineStatusBadge.vue'
-
 const props = defineProps({
   machines: {
     type: Array,
@@ -108,17 +95,6 @@ defineEmits(['edit', 'delete', 'page-change', 'sort'])
 // Tính STT theo trang hiện tại của bảng.
 function rowIndex(index) {
   return (props.pagination.page - 1) * props.pagination.limit + index + 1
-}
-
-// Format timestamp tín hiệu cuối trong bảng máy.
-function formatDate(value) {
-  if (!value) {
-    return '-'
-  }
-
-  const date = new Date(value)
-
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN')
 }
 </script>
 

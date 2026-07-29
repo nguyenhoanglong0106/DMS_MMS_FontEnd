@@ -45,7 +45,7 @@
           v-for="segment in displaySegments"
           :key="`${segment.from}-${segment.to}-${segment.status_id || 'none'}`"
           class="timeline-segment"
-          :class="{ 'is-nodata': !segment.status_id }"
+          :class="{ 'is-nodata': isNoDataStatusId(segment.status_id) }"
           :style="{
             left: `${segment.leftPercent}%`,
             width: `${segment.widthPercent}%`,
@@ -120,6 +120,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getLocations } from '@/api/locations.api'
 import { getMachines, getMachineStatusTimeline } from '@/api/machines.api'
+import { isNoDataStatusId } from '@/constants/machine-status'
 import {
   offMachineLogCreated,
   offMachineStatusUpdated,
@@ -139,9 +140,23 @@ const eventPage = ref(1)
 const EVENT_PAGE_SIZE = 8
 const MACHINE_DROPDOWN_LIMIT = 100
 const AXIS_HOURS = [0, 6, 12, 18, 24]
+const currentTime = ref(new Date())
+let clockTimer = null
 
 const selectedMachine = computed(() => machines.value.find((machine) => machine._id === selectedMachineId.value) || null)
-const timelineFillEnd = computed(() => timeline.value?.filledTo || timeline.value?.to)
+const timelineFillEnd = computed(() => {
+  const latestSegmentEnd = displaySegments.value.reduce((latest, segment) => {
+    const segmentEnd = parseTime(segment.to)
+
+    return segmentEnd === null ? latest : Math.max(latest, segmentEnd)
+  }, 0)
+
+  if (latestSegmentEnd) {
+    return new Date(latestSegmentEnd).toISOString()
+  }
+
+  return timeline.value?.filledTo || timeline.value?.to
+})
 const displayDate = computed(() => {
   if (!selectedDate.value) return '-'
 
@@ -152,7 +167,7 @@ const axisTicks = computed(() =>
     label: hour === 24 ? '24:00' : `${String(hour).padStart(2, '0')}:00`
   }))
 )
-const displaySegments = computed(() => timeline.value?.segments?.map(withTimelinePercent) || [])
+const displaySegments = computed(() => buildDisplaySegments().map(withTimelinePercent))
 const displayMarkers = computed(() =>
   [...(timeline.value?.markers || [])].sort((first, second) => {
     const firstTime = new Date(first.createdAt || first.updatedAt || 0).getTime()
@@ -258,6 +273,105 @@ function timelineTotalMs() {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function parseTime(value) {
+  if (!value) {
+    return null
+  }
+
+  const time = new Date(value).getTime()
+
+  return Number.isNaN(time) ? null : time
+}
+
+function displayEndTime() {
+  if (!timeline.value?.from || !timeline.value?.to) {
+    return null
+  }
+
+  const rangeStart = parseTime(timeline.value.from)
+  const rangeEnd = parseTime(timeline.value.to)
+  const now = currentTime.value.getTime()
+
+  if (rangeStart === null || rangeEnd === null) {
+    return null
+  }
+
+  return clamp(now, rangeStart, rangeEnd)
+}
+
+function statusTime(status) {
+  return parseTime(status?.createdAt || status?.created_at || status?.updatedAt || status?.updated_at)
+}
+
+function statusName(status) {
+  if (isNoDataStatusId(status?.status_id)) {
+    return 'Chưa có dữ liệu'
+  }
+
+  return status?.status_name || status?.name || status?.currentStatus?.status_name || '-'
+}
+
+function statusColor(status) {
+  return status?.color || status?.color_code || status?.status_color || '#6B7280'
+}
+
+function latestStatusBefore(endTime) {
+  const statuses = [timeline.value?.previousStatusLog, ...(timeline.value?.markers || [])]
+    .filter(Boolean)
+    .map((status) => ({
+      ...status,
+      statusTime: statusTime(status)
+    }))
+    .filter((status) => status.statusTime !== null && status.statusTime <= endTime)
+
+  return statuses.sort((first, second) => second.statusTime - first.statusTime)[0] || null
+}
+
+function buildDisplaySegments() {
+  if (!timeline.value?.from || !timeline.value?.to) {
+    return []
+  }
+
+  const rangeStart = parseTime(timeline.value.from)
+  const rangeEnd = parseTime(timeline.value.to)
+  const endTime = displayEndTime()
+
+  if (rangeStart === null || rangeEnd === null || endTime === null) {
+    return timeline.value?.segments || []
+  }
+
+  const segments = [...(timeline.value?.segments || [])]
+  const lastStatus = latestStatusBefore(endTime)
+
+  if (!lastStatus) {
+    return segments
+  }
+
+  const latestSegmentEnd = segments.reduce((latest, segment) => {
+    const segmentEnd = parseTime(segment.to)
+
+    return segmentEnd === null ? latest : Math.max(latest, segmentEnd)
+  }, rangeStart)
+  const segmentStart = clamp(Math.max(lastStatus.statusTime, latestSegmentEnd), rangeStart, rangeEnd)
+  const segmentEnd = clamp(endTime, segmentStart, rangeEnd)
+
+  if (segmentEnd <= segmentStart) {
+    return segments
+  }
+
+  return [
+    ...segments,
+    {
+      status_id: lastStatus.status_id,
+      status_name: statusName(lastStatus),
+      color: statusColor(lastStatus),
+      from: new Date(segmentStart).toISOString(),
+      to: new Date(segmentEnd).toISOString(),
+      durationMs: segmentEnd - segmentStart
+    }
+  ]
 }
 
 function readableTextColor(hexColor) {
@@ -412,6 +526,9 @@ async function handleRealtimeLog(event) {
 
 onMounted(async () => {
   try {
+    clockTimer = setInterval(() => {
+      currentTime.value = new Date()
+    }, 60000)
     await Promise.all([loadLocations(), loadMachines()])
     await loadTimeline()
     onMachineStatusUpdated(handleRealtimeStatus)
@@ -422,6 +539,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (clockTimer) {
+    clearInterval(clockTimer)
+  }
+
   offMachineStatusUpdated(handleRealtimeStatus)
   offMachineLogCreated(handleRealtimeLog)
 })

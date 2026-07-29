@@ -8,13 +8,17 @@ import {
   getStatusCount,
   updateMachine
 } from '@/api/machines.api'
-import { getStatusById } from '@/constants/machine-status'
+import { getStatusById, isNoDataStatusId } from '@/constants/machine-status'
 
 // Map status_id sang key thống kê.
 function countKey(statusId) {
+  if (isNoDataStatusId(statusId)) {
+    return 'noData'
+  }
+
   const status = getStatusById(statusId)
 
-  return status?.key || null
+  return status?.key || 'other'
 }
 
 // Count mặc định khi chưa có dữ liệu.
@@ -25,6 +29,7 @@ function emptyStatusCount() {
     pending: 0,
     error: 0,
     offline: 0,
+    other: 0,
     noData: 0
   }
 }
@@ -165,13 +170,14 @@ export const useMachineStore = defineStore('machine', {
       pending: 0,
       error: 0,
       offline: 0,
+      other: 0,
       noData: 0
     }
   }),
 
   actions: {
     // Tải danh sách máy theo filter.
-    async fetchMachines(extraParams = {}) {
+    async fetchMachines(extraParams = {}, options = {}) {
       this.loading = true
       this.error = ''
 
@@ -185,7 +191,9 @@ export const useMachineStore = defineStore('machine', {
 
         this.machines = response.data || []
         this.pagination = response.pagination || this.pagination
-        await this.fetchLatestSignals()
+        if (options.includeLatestSignals !== false) {
+          await this.fetchLatestSignals()
+        }
         this.applyStatusCountFallback()
       } catch (error) {
         this.error = error.message
@@ -229,13 +237,13 @@ export const useMachineStore = defineStore('machine', {
     },
 
     // Tạo máy rồi refresh danh sách.
-    async createMachine(payload) {
+    async createMachine(payload, fetchOptions = {}) {
       this.saving = true
       this.error = ''
 
       try {
         await createMachine(payload)
-        await this.fetchMachines({ page: 1 })
+        await this.fetchMachines({ page: 1 }, fetchOptions)
       } catch (error) {
         this.error = error.message
         throw error
@@ -245,13 +253,13 @@ export const useMachineStore = defineStore('machine', {
     },
 
     // Cập nhật máy rồi refresh danh sách.
-    async updateMachine(id, payload) {
+    async updateMachine(id, payload, fetchOptions = {}) {
       this.saving = true
       this.error = ''
 
       try {
         await updateMachine(id, payload)
-        await this.fetchMachines()
+        await this.fetchMachines({}, fetchOptions)
       } catch (error) {
         this.error = error.message
         throw error
@@ -261,13 +269,13 @@ export const useMachineStore = defineStore('machine', {
     },
 
     // Xóa máy rồi refresh danh sách.
-    async deleteMachine(id) {
+    async deleteMachine(id, fetchOptions = {}) {
       this.saving = true
       this.error = ''
 
       try {
         await deleteMachine(id)
-        await this.fetchMachines()
+        await this.fetchMachines({}, fetchOptions)
       } catch (error) {
         this.error = error.message
         throw error
@@ -302,7 +310,7 @@ export const useMachineStore = defineStore('machine', {
         }
       }
 
-      const countedStatuses = counts.online + counts.pending + counts.error + counts.offline
+      const countedStatuses = counts.online + counts.pending + counts.error + counts.offline + counts.other
       counts.noData = Math.max(total - countedStatuses, 0)
       this.statusCount = counts
     },
@@ -331,13 +339,14 @@ export const useMachineStore = defineStore('machine', {
 
       // Cập nhật count cục bộ.
       if (oldKey !== newKey && this.statusCount.total > 0) {
-        if (oldKey && this.statusCount[oldKey] > 0) {
+        if (oldKey && Number(this.statusCount[oldKey]) > 0) {
           this.statusCount[oldKey] -= 1
         } else if (!oldKey && this.statusCount.noData > 0) {
           this.statusCount.noData -= 1
         }
 
         if (newKey) {
+          this.statusCount[newKey] = Number(this.statusCount[newKey]) || 0
           this.statusCount[newKey] += 1
         }
       }
