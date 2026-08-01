@@ -39,6 +39,50 @@ function latestLogTime(log) {
   return log?.createdAt || log?.created_at || log?.updatedAt || log?.updated_at || log?.timestamp || null
 }
 
+function hasSignalValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== ''
+}
+
+function machineIdentity(machine) {
+  return String(machine?._id || machine?.id || machine?.code || '')
+}
+
+function preserveRealtimeSignalFields(machine, previousMachine) {
+  if (!previousMachine) {
+    return machine
+  }
+
+  if (!hasSignalValue(machine.lastSignalAt) && hasSignalValue(previousMachine.lastSignalAt)) {
+    machine.lastSignalAt = previousMachine.lastSignalAt
+  }
+
+  if (!machine.lastSignalLog && previousMachine.lastSignalLog) {
+    machine.lastSignalLog = previousMachine.lastSignalLog
+  }
+
+  if (!machine.latestLog && previousMachine.latestLog) {
+    machine.latestLog = previousMachine.latestLog
+  }
+
+  for (const field of ['cycleTime', 'cycle_time']) {
+    if (!hasSignalValue(machine[field]) && hasSignalValue(previousMachine[field])) {
+      machine[field] = previousMachine[field]
+    }
+  }
+
+  if (previousMachine.highlightedAt && !machine.highlightedAt) {
+    machine.highlightedAt = previousMachine.highlightedAt
+  }
+
+  return machine
+}
+
+function mergeMachineRefresh(machines, previousMachines) {
+  const previousById = new Map(previousMachines.map((machine) => [machineIdentity(machine), machine]))
+
+  return machines.map((machine) => preserveRealtimeSignalFields(machine, previousById.get(machineIdentity(machine))))
+}
+
 // Lấy payload chính từ realtime event.
 function eventPayload(event) {
   return event?.log || event?.data || event
@@ -189,7 +233,7 @@ export const useMachineStore = defineStore('machine', {
           ...extraParams
         })
 
-        this.machines = response.data || []
+        this.machines = mergeMachineRefresh(response.data || [], this.machines)
         this.pagination = response.pagination || this.pagination
         if (options.includeLatestSignals !== false) {
           await this.fetchLatestSignals()

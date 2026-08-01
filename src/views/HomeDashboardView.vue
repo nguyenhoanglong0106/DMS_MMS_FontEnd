@@ -50,7 +50,7 @@
         </RouterLink>
       </header>
 
-      <p v-if="loading" class="empty">Đang tải dữ liệu...</p>
+      <p v-if="loading && !hasDashboardData" class="empty">Đang tải dữ liệu...</p>
       <p v-else-if="locationOverview.length === 0" class="empty">Chưa có dữ liệu khu vực.</p>
 
       <div v-else class="area-grid">
@@ -81,7 +81,12 @@
           </div>
 
           <div class="area-counts">
-            <span v-for="status in areaStatusItems(area)" :key="`count-${status.key}`" class="area-count">
+            <span
+              v-for="status in areaCountItems(area)"
+              :key="`count-${status.key}`"
+              class="area-count"
+              :class="{ 'is-empty': status.count === 0 }"
+            >
               <i :style="{ backgroundColor: status.color }" aria-hidden="true"></i>
               <span>{{ status.name }}</span>
               <strong>{{ status.count }}</strong>
@@ -136,6 +141,7 @@ const error = ref('')
 const socketConnected = ref(false)
 let refreshTimer = null
 
+const hasDashboardData = computed(() => locationOverview.value.length > 0 || totals.value.total > 0)
 const overviewText = computed(() => `${totals.value.locationCount} khu vực - ${totals.value.total} máy`)
 const statusDefinitions = computed(() => [
   ...statuses.value.map((status) => ({
@@ -226,6 +232,14 @@ function translucent(hexColor, alpha) {
 }
 
 function areaStatusItems(area) {
+  return buildAreaStatusItems(area).filter((status) => status.count > 0)
+}
+
+function areaCountItems(area) {
+  return buildAreaStatusItems(area)
+}
+
+function buildAreaStatusItems(area) {
   const total = Number(area.counts?.total) || 0
 
   return statusDefinitions.value.map((status) => {
@@ -242,7 +256,7 @@ function areaStatusItems(area) {
       count,
       widthPercent: total ? Math.max((count / total) * 100, count > 0 ? 2 : 0) : 0
     }
-  }).filter((status) => status.count > 0)
+  })
 }
 
 function areaHealthClass(area) {
@@ -260,10 +274,13 @@ async function loadStatuses() {
 
 async function loadDashboard() {
   try {
-    loading.value = true
+    if (!hasDashboardData.value) {
+      loading.value = true
+    }
+
     error.value = ''
     const response = await getLocationOverview()
-    locationOverview.value = response.data || []
+    locationOverview.value = normalizeLocationOverview(response.data || [])
     totals.value = response.totals || emptyTotals()
   } catch (err) {
     error.value = err.message
@@ -281,6 +298,29 @@ function scheduleDashboardReload() {
     refreshTimer = null
     loadDashboard()
   }, 300)
+}
+
+function normalizeLocationOverview(areas) {
+  return [...areas]
+    .map((area) => ({
+      ...area,
+      machines: [...(area.machines || [])].sort(compareMachineByCode)
+    }))
+    .sort(compareAreaByName)
+}
+
+function compareAreaByName(left, right) {
+  return String(left.location?.location_name || '').localeCompare(String(right.location?.location_name || ''), 'vi', {
+    numeric: true,
+    sensitivity: 'base'
+  })
+}
+
+function compareMachineByCode(left, right) {
+  return String(left.code || '').localeCompare(String(right.code || ''), 'vi', {
+    numeric: true,
+    sensitivity: 'base'
+  })
 }
 
 function bindSocketState() {
@@ -546,6 +586,10 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.area-count.is-empty {
+  opacity: 0.58;
 }
 
 .machine-chip-grid {

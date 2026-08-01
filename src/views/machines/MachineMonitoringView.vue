@@ -78,7 +78,11 @@
             :key="machine._id"
             class="priority-card"
             :class="{ 'is-highlighted': isHighlighted(machine) }"
-            :style="{ '--status-color': machineStatusColor(machine), '--frame-color': tileFrameColor(machine) }"
+            :style="{
+              '--status-color': machineStatusColor(machine),
+              '--frame-color': tileFrameColor(machine),
+              '--card-bg-color': tileBackgroundColor(machine)
+            }"
           >
             <header>
               <div>
@@ -115,29 +119,34 @@
       </section>
 
       <aside class="event-panel">
-        <header class="section-header">
-          <div>
-            <strong>Sự kiện mới nhất</strong>
-            <span>{{ recentEventCountText }}</span>
-          </div>
+        <header class="section-header event-header">
+          <strong>Sự kiện mới nhất</strong>
+          <span>{{ recentEventCountText }}</span>
         </header>
 
-        <p v-if="recentEvents.length === 0" class="empty-state">
-          Chưa có sự kiện trạng thái.
-        </p>
+        <div class="event-body">
+          <p v-if="recentEvents.length === 0" class="empty-state">
+            Chưa có sự kiện trạng thái.
+          </p>
 
-        <ul v-else class="event-list">
-          <li v-for="event in recentEvents" :key="event.id">
-            <span class="event-dot" :style="{ backgroundColor: event.color }" aria-hidden="true"></span>
-            <div class="event-content">
-              <p class="event-main">
-                <strong>{{ event.machineCode }}</strong>
-                <span>{{ event.text }}</span>
-              </p>
-              <small>{{ formatTimeOnly(event.createdAt) }}</small>
-            </div>
-          </li>
-        </ul>
+          <ul v-else class="event-list">
+            <li v-for="event in recentEvents" :key="event.id">
+              <span class="event-dot" :style="{ backgroundColor: event.color }" aria-hidden="true"></span>
+              <div class="event-content">
+                <p class="event-main">
+                  <span class="event-machine">
+                    <strong>{{ event.machineCode }}</strong>
+                    <span>{{ event.machineName }}</span>
+                  </span>
+                  <span class="event-status">
+                    <span>{{ event.text }}</span>
+                    <time>{{ formatTimeOnly(event.createdAt) }}</time>
+                  </span>
+                </p>
+              </div>
+            </li>
+          </ul>
+        </div>
       </aside>
     </section>
 
@@ -186,7 +195,9 @@
             >
               <span class="tile-dot" aria-hidden="true"></span>
               <strong>{{ machine.code }}</strong>
-              <span>{{ compactStatusLabel(machine) }}</span>
+              <span class="tile-meta" :class="{ 'is-cycle-time': !isNoDataMachine(machine) }">
+                {{ gridTileText(machine) }}
+              </span>
             </RouterLink>
           </div>
         </article>
@@ -216,9 +227,11 @@ const route = useRoute()
 const locations = ref([])
 const statuses = ref([])
 const recentEvents = ref([])
+const recentEventTotal = ref(0)
 const socketConnected = ref(false)
 const showStable = ref(true)
 const MONITORING_LIMIT = 100
+const RECENT_EVENT_LIMIT = 20
 let realtimeReloadTimer = null
 
 const urgentMachines = computed(() => sortedByUrgency(machineStore.machines.filter((machine) => laneForMachine(machine) === 'urgent')))
@@ -229,7 +242,7 @@ const gridMachines = computed(() => (showStable.value ? machineStore.machines : 
 const locationGroups = computed(() => {
   const groups = new Map()
 
-  for (const machine of sortedByUrgency(gridMachines.value)) {
+  for (const machine of sortedForGrid(gridMachines.value)) {
     const id = String(machine.location?.location_id || machine.location_id || 'no-location')
     const name = locationName(machine)
 
@@ -250,13 +263,7 @@ const locationGroups = computed(() => {
     }
   }
 
-  return [...groups.values()].sort((left, right) => {
-    const issueDiff = right.issueCount - left.issueCount
-
-    if (issueDiff !== 0) return issueDiff
-
-    return left.name.localeCompare(right.name, 'vi')
-  })
+  return [...groups.values()].sort((left, right) => compareNaturalText(left.name, right.name))
 })
 
 const displayedTotalText = computed(() => {
@@ -265,7 +272,7 @@ const displayedTotalText = computed(() => {
 
   return loaded === total ? `${total} máy trong ca hiện tại` : `Đang hiển thị ${loaded}/${total} máy`
 })
-const recentEventCountText = computed(() => `${recentEvents.value.length} sự kiện`)
+const recentEventCountText = computed(() => `${recentEventTotal.value} sự kiện`)
 
 const gridSummaryText = computed(() => {
   const count = gridMachines.value.length
@@ -290,6 +297,10 @@ function laneForMachine(machine) {
   return 'stable'
 }
 
+function isNoDataMachine(machine) {
+  return isNoDataStatusId(machine.currentStatus?.status_id)
+}
+
 function statusPriority(machine) {
   const statusId = String(machine.currentStatus?.status_id ?? '')
 
@@ -300,22 +311,34 @@ function statusPriority(machine) {
   return 3
 }
 
-function signalAge(machine) {
-  const value = lastSignalAt(machine)
-  const date = value ? new Date(value) : null
-
-  if (!date || Number.isNaN(date.getTime())) return Number.MAX_SAFE_INTEGER
-
-  return Date.now() - date.getTime()
-}
-
 function sortedByUrgency(machines) {
   return [...machines].sort((left, right) => {
     const priorityDiff = statusPriority(left) - statusPriority(right)
 
     if (priorityDiff !== 0) return priorityDiff
 
-    return signalAge(right) - signalAge(left)
+    return compareMachinePosition(left, right)
+  })
+}
+
+function sortedForGrid(machines) {
+  return [...machines].sort(compareMachinePosition)
+}
+
+function compareMachinePosition(left, right) {
+  const locationDiff = compareNaturalText(locationName(left), locationName(right))
+
+  if (locationDiff !== 0) {
+    return locationDiff
+  }
+
+  return compareNaturalText(left.code, right.code)
+}
+
+function compareNaturalText(left, right) {
+  return String(left || '').localeCompare(String(right || ''), 'vi', {
+    numeric: true,
+    sensitivity: 'base'
   })
 }
 
@@ -342,7 +365,7 @@ function eventSignature(event) {
   return `${event.machineCode || '-'}-${event.createdAt || '-'}-${event.text || '-'}`
 }
 
-function normalizeRecentEvents(events) {
+function uniqueSortedRecentEvents(events) {
   const uniqueEvents = new Map()
 
   for (const event of events) {
@@ -357,7 +380,11 @@ function normalizeRecentEvents(events) {
     }
   }
 
-  return [...uniqueEvents.values()].sort((first, second) => eventTime(second) - eventTime(first)).slice(0, 12)
+  return [...uniqueEvents.values()].sort((first, second) => eventTime(second) - eventTime(first))
+}
+
+function normalizeRecentEvents(events) {
+  return uniqueSortedRecentEvents(events).slice(0, RECENT_EVENT_LIMIT)
 }
 
 function machineEventTime(machine) {
@@ -380,6 +407,7 @@ function machineStatusEvent(machine) {
   return {
     id: `machine-${machine._id}-${machine.currentStatus?.status_id || 'none'}-${createdAt}`,
     machineCode: machine.code,
+    machineName: machine.name,
     text: statusLabel(machine),
     color: machineStatusColor(machine),
     createdAt
@@ -390,8 +418,10 @@ function syncRecentEventsFromMachines() {
   const visibleMachineCodes = new Set(machineStore.machines.map((machine) => String(machine.code)))
   const visibleSessionEvents = recentEvents.value.filter((event) => visibleMachineCodes.has(String(event.machineCode)))
   const machineEvents = machineStore.machines.map(machineStatusEvent).filter(Boolean)
+  const syncedEvents = uniqueSortedRecentEvents([...visibleSessionEvents, ...machineEvents])
 
-  recentEvents.value = normalizeRecentEvents([...visibleSessionEvents, ...machineEvents])
+  recentEvents.value = syncedEvents.slice(0, RECENT_EVENT_LIMIT)
+  recentEventTotal.value = Math.max(recentEventTotal.value, syncedEvents.length)
 }
 
 function addRecentEvent(event, fallbackText) {
@@ -400,22 +430,29 @@ function addRecentEvent(event, fallbackText) {
     eventField(event, payload, ['colorCode', 'color_code', 'statusColor', 'status_color', 'color']) || '#0f62b4'
   const statusNameText = eventField(event, payload, ['statusName', 'status_name']) || fallbackText
   const machineCode = eventField(event, payload, ['machineCode', 'machine_code']) || payload?.machine?.code || '-'
+  const machineFromStore = machineStore.machines.find((machine) => String(machine.code) === String(machineCode))
+  const machineName =
+    eventField(event, payload, ['machineName', 'machine_name', 'name']) || payload?.machine?.name || machineFromStore?.name || '-'
   const createdAt =
     eventField(event, payload, ['createdAt', 'created_at', 'updatedAt', 'updated_at', 'timestamp']) ||
     new Date().toISOString()
 
-  recentEvents.value = [
-    {
-      id: `realtime-${machineCode}-${createdAt}-${statusNameText}`,
-      machineCode,
-      text: statusNameText,
-      color: statusColor,
-      createdAt
-    },
-    ...recentEvents.value
-  ]
+  const nextEvent = {
+    id: `realtime-${machineCode}-${createdAt}-${statusNameText}`,
+    machineCode,
+    machineName,
+    text: statusNameText,
+    color: statusColor,
+    createdAt
+  }
 
-  recentEvents.value = normalizeRecentEvents(recentEvents.value)
+  const isNewEvent = !recentEvents.value.some((eventItem) => eventSignature(eventItem) === eventSignature(nextEvent))
+
+  recentEvents.value = normalizeRecentEvents([nextEvent, ...recentEvents.value])
+
+  if (isNewEvent) {
+    recentEventTotal.value += 1
+  }
 }
 
 function scheduleRealtimeReload() {
@@ -480,6 +517,8 @@ function machineStatusColor(machine) {
 }
 
 function tileFrameColor(machine) {
+  if (isNoDataMachine(machine)) return machineStatusColor(machine)
+
   const lane = laneForMachine(machine)
 
   if (lane === 'urgent') return '#dc2626'
@@ -489,6 +528,8 @@ function tileFrameColor(machine) {
 }
 
 function tileBackgroundColor(machine) {
+  if (isNoDataMachine(machine)) return '#f8fafc'
+
   const lane = laneForMachine(machine)
 
   if (lane === 'urgent') return '#fff7f7'
@@ -505,6 +546,53 @@ function compactStatusLabel(machine) {
   const label = statusLabel(machine)
 
   return label.length > 12 ? `${label.slice(0, 12)}...` : label
+}
+
+function gridTileCycleTime(machine) {
+  if (isNoDataMachine(machine)) {
+    return ''
+  }
+
+  return compactCycleTime(machine)
+}
+
+function gridTileText(machine) {
+  if (isNoDataMachine(machine)) {
+    return compactStatusLabel(machine)
+  }
+
+  const cycleTime = gridTileCycleTime(machine)
+
+  return `Cycletime: ${cycleTime || '-'}`
+}
+
+function compactCycleTime(machine) {
+  const value = cycleTimeValue(machine)
+
+  if (value === null) {
+    return ''
+  }
+
+  const text = String(value).trim()
+
+  return text.length > 12 ? `${text.slice(0, 12)}...` : text
+}
+
+function cycleTimeValue(machine) {
+  const candidates = [
+    machine.lastSignalLog?.cycleTime,
+    machine.latestLog?.cycleTime,
+    machine.lastLog?.cycleTime,
+    machine.cycleTime,
+    machine.lastSignalLog?.cycle_time,
+    machine.latestLog?.cycle_time,
+    machine.lastLog?.cycle_time,
+    machine.cycle_time
+  ]
+
+  const value = candidates.find((item) => item !== undefined && item !== null && String(item).trim() !== '')
+
+  return value ?? null
 }
 
 function locationName(machine) {
@@ -765,7 +853,7 @@ h1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .priority-panel,
@@ -776,6 +864,10 @@ h1 {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--surface-bg);
+}
+
+.priority-panel {
+  --priority-body-height: 146px;
 }
 
 .section-header {
@@ -814,8 +906,10 @@ h1 {
 .priority-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  align-content: start;
   gap: 10px;
-  max-height: 250px;
+  height: var(--priority-body-height);
+  max-height: var(--priority-body-height);
   overflow: auto;
   padding: 10px;
   scrollbar-gutter: stable;
@@ -828,13 +922,16 @@ h1 {
   border-left: 5px solid var(--frame-color, #94a3b8);
   border-radius: 8px;
   padding: 10px 11px;
-  background: var(--surface-bg);
+  background: var(--card-bg-color, var(--surface-bg));
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .priority-card:hover,
 .machine-tile:hover {
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.priority-card:hover {
   transform: translateY(-1px);
 }
 
@@ -912,20 +1009,46 @@ h1 {
 }
 
 .event-panel {
-  align-self: start;
-  display: grid;
+  position: relative;
+  align-self: stretch;
+  min-height: 0;
+  height: auto;
+  contain: layout;
+  --event-header-height: 40px;
+  --event-row-height: 38px;
 }
 
 .event-panel .section-header {
-  min-height: 50px;
-  padding: 9px 12px;
+  position: relative;
+  z-index: 1;
+  height: var(--event-header-height);
+  min-height: var(--event-header-height);
+  padding: 7px 12px;
+  background: var(--surface-bg);
+  box-sizing: border-box;
+}
+
+.event-panel .event-header {
+  align-items: center;
+  flex-direction: row;
+}
+
+.event-body {
+  position: absolute;
+  inset: var(--event-header-height) 0 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .event-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0;
-  max-height: 218px;
-  overflow: auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -935,44 +1058,70 @@ h1 {
 .event-list li {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
   gap: 9px;
-  padding: 8px 12px;
+  flex: 0 0 calc(100% / 3);
+  min-height: var(--event-row-height);
+  box-sizing: border-box;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .event-dot {
   width: 10px;
   height: 10px;
-  margin-top: 4px;
   border-radius: 999px;
 }
 
 .event-content {
-  display: grid;
-  gap: 2px;
   min-width: 0;
 }
 
 .event-main {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 10px;
   min-width: 0;
   line-height: 1.25;
 }
 
-.event-main strong,
-.event-main span,
-.event-content small {
+.event-machine,
+.event-status {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.event-machine {
+  flex: 1 1 auto;
+  gap: 7px;
+}
+
+.event-machine strong,
+.event-status time {
+  flex: 0 0 auto;
+}
+
+.event-machine span,
+.event-status span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.event-list li small {
+.event-status {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 48%;
   color: var(--muted-color);
   font-size: 12px;
+}
+
+.event-status time {
+  font-variant-numeric: tabular-nums;
 }
 
 .plant-board {
@@ -1057,6 +1206,7 @@ h1 {
 .machine-grid {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
   padding: 10px;
 }
@@ -1065,8 +1215,10 @@ h1 {
   position: relative;
   display: grid;
   gap: 3px;
-  width: 94px;
-  min-height: 54px;
+  box-sizing: border-box;
+  width: 118px;
+  height: 64px;
+  min-height: 64px;
   border: 1px solid var(--tile-frame-color, var(--border-color));
   border-top: 4px solid var(--tile-frame-color, #94a3b8);
   border-radius: 8px;
@@ -1074,11 +1226,11 @@ h1 {
   background: var(--tile-bg-color, var(--surface-bg));
   color: var(--text-color);
   text-decoration: none;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition: box-shadow 0.2s ease;
 }
 
 .machine-tile.is-priority {
-  box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
 }
 
 .tile-dot {
@@ -1100,13 +1252,29 @@ h1 {
   font-size: 15px;
 }
 
-.machine-tile span:last-child {
+.machine-tile .tile-meta {
+  display: block;
   overflow: hidden;
   color: var(--muted-color);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
   font-weight: 700;
+}
+
+.machine-tile .tile-meta.is-cycle-time {
+  white-space: nowrap;
+  color: var(--text-color);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.priority-panel > .empty-state {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  height: var(--priority-body-height);
+  padding: 0 12px;
 }
 
 .empty-state {
@@ -1116,7 +1284,11 @@ h1 {
 }
 
 .event-panel .empty-state {
-  padding: 18px 12px;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  height: 100%;
+  padding: 0 12px;
 }
 
 @media (max-width: 1300px) {

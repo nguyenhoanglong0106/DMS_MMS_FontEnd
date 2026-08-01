@@ -39,10 +39,12 @@
     <MachineFormModal
       :show="showForm"
       :machine="editingMachine"
+      :machines="machinesForValidation"
       :locations="locations"
       :saving="machineStore.saving"
       :error="formError"
       @close="closeForm"
+      @clear-error="formError = ''"
       @submit="saveMachine"
     />
 
@@ -58,6 +60,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getLocations } from '@/api/locations.api'
+import { getMachines } from '@/api/machines.api'
 import MachineDeleteDialog from '@/components/machines/MachineDeleteDialog.vue'
 import MachineFilter from '@/components/machines/MachineFilter.vue'
 import MachineFormModal from '@/components/machines/MachineFormModal.vue'
@@ -72,12 +75,14 @@ import { useMachineStore } from '@/stores/machine.store'
 
 const machineStore = useMachineStore()
 const locations = ref([])
+const machinesForValidation = ref([])
 const showForm = ref(false)
 const editingMachine = ref(null)
 const deleteTarget = ref(null)
 const formError = ref('')
 const message = ref('')
 let messageTimer = null
+const VALIDATION_PAGE_SIZE = 100
 
 function showMessage(text) {
   message.value = text
@@ -106,6 +111,28 @@ function handleRealtimeLog(event) {
 async function loadReferenceData() {
   const locationResponse = await getLocations()
   locations.value = locationResponse.data || []
+}
+
+// Tải danh sách máy riêng cho validate Signal Keys, không làm ảnh hưởng phân trang bảng.
+async function loadMachinesForValidation() {
+  const machines = []
+  let page = 1
+  let totalPages = 1
+
+  do {
+    const response = await getMachines({
+      page,
+      limit: VALIDATION_PAGE_SIZE,
+      sortBy: 'code',
+      sortOrder: 'asc'
+    })
+
+    machines.push(...(response.data || []))
+    totalPages = Number(response.pagination?.totalPages) || 1
+    page += 1
+  } while (page <= totalPages)
+
+  machinesForValidation.value = machines
 }
 
 // Mở modal ở chế độ tạo máy mới.
@@ -148,6 +175,7 @@ async function saveMachine(payload, clientError) {
     }
 
     closeForm()
+    await loadMachinesForValidation()
     await machineStore.fetchStatusCount()
   } catch (error) {
     formError.value = error.message
@@ -159,6 +187,7 @@ async function confirmDelete(machine) {
   await machineStore.deleteMachine(machine._id)
   deleteTarget.value = null
   showMessage('Đã xóa máy.')
+  await loadMachinesForValidation()
   await machineStore.fetchStatusCount()
 }
 
@@ -191,7 +220,12 @@ async function changeSort(sortBy) {
 onMounted(async () => {
   machineStore.filters.noData = ''
   machineStore.filters.abnormal = ''
-  await Promise.all([loadReferenceData(), machineStore.fetchMachines(), machineStore.fetchStatusCount()])
+  await Promise.all([
+    loadReferenceData(),
+    machineStore.fetchMachines(),
+    machineStore.fetchStatusCount(),
+    loadMachinesForValidation()
+  ])
   onMachineLogCreated(handleRealtimeLog)
   onMachineStatusUpdated(handleRealtimeStatus)
 })
