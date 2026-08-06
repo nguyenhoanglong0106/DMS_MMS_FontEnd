@@ -126,6 +126,8 @@ const message = ref('')
 const error = ref('')
 let messageTimer = null
 
+// Deep clone để tránh theme reactive trỏ chung reference với THEME_PRESETS/
+// localStorage - sửa trên form không được làm thay đổi preset gốc.
 function cloneTheme(nextTheme) {
   return JSON.parse(JSON.stringify(nextTheme))
 }
@@ -165,6 +167,8 @@ function invalidColorField() {
   return THEME_FIELDS.find((field) => !/^#[0-9A-Fa-f]{6}$/.test(theme.values[field.key] || ''))
 }
 
+// Áp màu ngay khi người dùng gõ để xem trước live, nhưng chưa lưu vào
+// localStorage - chỉ saveTheme() mới thực sự lưu lại.
 function previewTheme() {
   const invalidField = invalidColorField()
 

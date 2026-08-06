@@ -17,7 +17,7 @@ export default {
       collapsed,
       toggleSidebar,
       sidebarWidth,
-      sidebarMenus 
+      sidebarMenus
     }
   }
 }
@@ -129,13 +129,6 @@ export default {
   letter-spacing: 0;
   border-radius: 12px;
   background-color: rgba(255, 255, 255, 0.16);
-}
-
-.sidebar-menu {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .logout-button {

@@ -90,12 +90,11 @@
                 <span>{{ machine.name }}</span>
               </div>
               <div class="card-action">
-                <MachineStatusBadge
-                  :status-id="machine.currentStatus?.status_id"
-                  :status-name="statusLabel(machine)"
-                  :status-color="machineStatusColor(machine)"
-                  size="sm"
-                />
+                <div class="card-badges">
+                <span class="tile-connection-badge" :style="{ backgroundColor: machineConnectionColor(machine) }">
+                    {{ machineConnectionName(machine) }}
+                  </span>
+                </div>
                 <RouterLink :to="`/machines/${machine._id}`">Xem chi tiết</RouterLink>
               </div>
             </header>
@@ -186,15 +185,18 @@
               class="machine-tile"
               :class="{ 'is-highlighted': isHighlighted(machine), 'is-priority': laneForMachine(machine) !== 'stable' }"
               :style="{
-                '--status-color': machineStatusColor(machine),
                 '--tile-frame-color': tileFrameColor(machine),
                 '--tile-bg-color': tileBackgroundColor(machine)
               }"
               :to="`/machines/${machine._id}`"
               :title="machineTooltip(machine)"
             >
-              <span class="tile-dot" aria-hidden="true"></span>
-              <strong>{{ machine.code }}</strong>
+              <div class="tile-top">
+                <strong>{{ machine.name }}</strong>
+                <span class="tile-connection-badge" :style="{ backgroundColor: machineConnectionColor(machine) }">
+                  {{ machineConnectionName(machine) }}
+                </span>
+              </div>
               <span class="tile-meta" :class="{ 'is-cycle-time': !isNoDataMachine(machine) }">
                 {{ gridTileText(machine) }}
               </span>
@@ -211,7 +213,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { getLocations } from '@/api/locations.api'
 import { getStatuses } from '@/api/statuses.api'
-import MachineStatusBadge from '@/components/machines/MachineStatusBadge.vue'
+import { getMachineConnectionStatuses } from '@/api/machineConnectionStatuses.api'
 import {
   getSocket,
   offMachineLogCreated,
@@ -221,11 +223,13 @@ import {
 } from '@/services/socket.service'
 import { isNoDataStatusId } from '@/constants/machine-status'
 import { useMachineStore } from '@/stores/machine.store'
+import { formatDateTime as formatDate, formatTimeOnly } from '@/utils/date-format'
 
 const machineStore = useMachineStore()
 const route = useRoute()
 const locations = ref([])
 const statuses = ref([])
+const connectionStatuses = ref([])
 const recentEvents = ref([])
 const recentEventTotal = ref(0)
 const socketConnected = ref(false)
@@ -288,6 +292,8 @@ const legendStatuses = computed(() => [
   { key: 'no-data', label: 'Chưa dữ liệu', color: '#6B7280' }
 ])
 
+// Xếp máy vào 1 trong 3 nhóm hiển thị: urgent (Lỗi/chưa dữ liệu) > watch
+// (Tạm dừng) > stable, dùng để sắp xếp và tô màu ưu tiên trên màn hình.
 function laneForMachine(machine) {
   const statusId = String(machine.currentStatus?.status_id ?? '')
 
@@ -414,6 +420,9 @@ function machineStatusEvent(machine) {
   }
 }
 
+// Sau khi reload danh sách máy, dựng lại "Sự kiện mới nhất" từ trạng thái
+// hiện tại của từng máy, gộp với các event realtime đã nhận trong phiên này
+// (chỉ giữ event của máy vẫn còn hiển thị) để không mất log khi F5/lọc lại.
 function syncRecentEventsFromMachines() {
   const visibleMachineCodes = new Set(machineStore.machines.map((machine) => String(machine.code)))
   const visibleSessionEvents = recentEvents.value.filter((event) => visibleMachineCodes.has(String(event.machineCode)))
@@ -455,6 +464,7 @@ function addRecentEvent(event, fallbackText) {
   }
 }
 
+// Debounce 800ms: nhiều event realtime dồn dập chỉ cần gọi lại API 1 lần.
 function scheduleRealtimeReload() {
   if (realtimeReloadTimer) {
     clearTimeout(realtimeReloadTimer)
@@ -516,6 +526,38 @@ function machineStatusColor(machine) {
   return machine.currentStatus?.color_code || machine.currentStatus?.color || statusColor(machine.currentStatus?.status_id)
 }
 
+function connectionStatusMeta(connectId) {
+  return connectionStatuses.value.find((status) => String(status.connect_id) === String(connectId)) || null
+}
+
+function fallbackConnectionStatus(connectId) {
+  return {
+    connect_id: String(connectId),
+    connect_desc: String(connectId) === '2' ? 'Offline' : 'Online',
+    color_code: String(connectId) === '2' ? '#6B7280' : '#16A34A'
+  }
+}
+
+function connectionStatus(connectId) {
+  return connectionStatusMeta(connectId) || fallbackConnectionStatus(connectId)
+}
+
+function machineConnectionStatus(machine) {
+  return machine.connectionStatus || connectionStatus(machine.connect_id || '1')
+}
+
+function machineConnectionName(machine) {
+  return machineConnectionStatus(machine).connect_desc
+}
+
+function machineConnectionColor(machine) {
+  const status = machineConnectionStatus(machine)
+
+  return status.color_code || status.color || connectionStatus(machine.connect_id || '1').color_code
+}
+
+// Màu viền/nền của ô máy trong lưới trạng thái, ưu tiên theo lane (mức độ
+// cần chú ý) chứ không theo màu status_id để nổi bật máy cần xử lý.
 function tileFrameColor(machine) {
   if (isNoDataMachine(machine)) return machineStatusColor(machine)
 
@@ -604,7 +646,7 @@ function lastSignalAt(machine) {
 }
 
 function machineTooltip(machine) {
-  return `${machine.code} - ${machine.name}\n${statusLabel(machine)}\nKhu vực: ${locationName(machine)}\nTín hiệu cuối: ${formatDate(lastSignalAt(machine))}`
+  return `${machine.code} - ${machine.name}\n${statusLabel(machine)}\nKết nối: ${machineConnectionName(machine)}\nKhu vực: ${locationName(machine)}\nTín hiệu cuối: ${formatDate(lastSignalAt(machine))}`
 }
 
 async function resetMonitoringFilters() {
@@ -615,18 +657,6 @@ async function resetMonitoringFilters() {
 
 function isHighlighted(machine) {
   return machine.highlightedAt && Date.now() - machine.highlightedAt < 5000
-}
-
-function formatDate(value) {
-  if (!value) return '-'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN')
-}
-
-function formatTimeOnly(value) {
-  if (!value) return '-'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleTimeString('vi-VN')
 }
 
 function formatRelativeTime(value) {
@@ -647,9 +677,14 @@ function formatRelativeTime(value) {
 }
 
 onMounted(async () => {
-  const [locationResponse, statusResponse] = await Promise.all([getLocations(), getStatuses()])
+  const [locationResponse, statusResponse, connectionResponse] = await Promise.all([
+    getLocations(),
+    getStatuses(),
+    getMachineConnectionStatuses()
+  ])
   locations.value = locationResponse.data || []
   statuses.value = statusResponse.data || []
+  connectionStatuses.value = connectionResponse.data || []
 
   if (route.query.location_id) {
     machineStore.filters.location_id = String(route.query.location_id)
@@ -953,7 +988,7 @@ h1 {
   line-height: 1.1;
 }
 
-.priority-card header span {
+.priority-card header span:not(.tile-connection-badge) {
   color: var(--muted-color);
   font-size: 13px;
 }
@@ -962,6 +997,12 @@ h1 {
   display: grid;
   justify-items: end;
   gap: 8px;
+}
+
+.card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .card-action a {
@@ -1214,10 +1255,12 @@ h1 {
 .machine-tile {
   position: relative;
   display: grid;
-  gap: 3px;
+  gap: 4px;
   box-sizing: border-box;
-  width: 118px;
-  height: 64px;
+  width: auto;
+  min-width: 138px;
+  max-width: 190px;
+  height: auto;
   min-height: 64px;
   border: 1px solid var(--tile-frame-color, var(--border-color));
   border-top: 4px solid var(--tile-frame-color, #94a3b8);
@@ -1233,23 +1276,34 @@ h1 {
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
 }
 
-.tile-dot {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 9px;
-  height: 9px;
+.tile-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tile-connection-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
   border-radius: 999px;
-  background: var(--status-color, #94a3b8);
-  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
 .machine-tile strong {
-  padding-right: 14px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 15px;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.2;
+  font-size: 13px;
 }
 
 .machine-tile .tile-meta {

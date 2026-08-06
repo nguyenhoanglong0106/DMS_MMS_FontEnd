@@ -42,6 +42,11 @@ export function getMachineStatusHistory(id, params = {}) {
   return apiClient.get(`/machines/${id}/status-history`, { params })
 }
 
+// Gọi API lấy lịch sử Online/Offline của máy.
+export function getMachineConnectionHistory(id, params = {}) {
+  return apiClient.get(`/machines/${id}/connection-history`, { params })
+}
+
 // Gọi API lấy dữ liệu timeline trạng thái theo ngày.
 export function getMachineStatusTimeline(id, params = {}) {
   return apiClient.get(`/machines/${id}/status-timeline`, { params })
@@ -55,4 +60,9 @@ export function getStatusCount() {
 // Gọi API lấy tổng quan máy theo từng khu vực cho trang Home.
 export function getLocationOverview() {
   return apiClient.get('/machines/location-overview')
+}
+
+// Gọi API kiểm tra trạng thái backend/MQTT.
+export function getBackendHealth() {
+  return apiClient.get('/health')
 }

@@ -56,6 +56,7 @@ export default {
   },
   methods: {
     // Kiểm tra thông tin và phát sự kiện đăng nhập.
+    // Lưu ý: đây là màn hình đăng nhập tạm/local, chưa gọi API xác thực thật.
     handleLogin() {
       if (!this.username || !this.password) {
         this.message = "Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.";

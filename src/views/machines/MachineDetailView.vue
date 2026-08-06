@@ -5,11 +5,17 @@
         <h1>{{ machine.code }}</h1>
         <p>{{ machine.name }} - {{ machine.location?.location_name || 'Chưa có khu vực' }}</p>
       </div>
-      <MachineStatusBadge
-        :status-id="machine.currentStatus?.status_id"
-        :status-name="machine.currentStatus?.status_name"
-        :status-color="machine.currentStatus?.color"
-      />
+      <div class="detail-statuses">
+        <MachineStatusBadge
+          :status-id="machine.currentStatus?.status_id"
+          :status-name="machine.currentStatus?.status_name"
+          :status-color="machine.currentStatus?.color"
+        />
+        <span class="connection-badge">
+          <span class="connection-dot" :style="{ backgroundColor: machineConnectionColor(machine) }"></span>
+          {{ machineConnectionName(machine) }}
+        </span>
+      </div>
     </section>
 
     <p v-if="error" class="error">{{ error }}</p>
@@ -34,14 +40,14 @@
           <table>
             <thead>
               <tr>
+                <th>Ngày</th>
                 <th>Thời gian</th>
                 <th>Trạng thái</th>
                 <th>l1</th>
                 <th>l2</th>
                 <th>l3</th>
                 <th>l4</th>
-                <th>cycleTime</th>
-                <th>ms</th>
+                <th>Cycle Time (s)</th>
               </tr>
             </thead>
             <tbody>
@@ -49,7 +55,8 @@
                 <td colspan="8" class="empty">Chưa có log.</td>
               </tr>
               <tr v-for="log in logs" :key="log._id || log.createdAt || log.ms">
-                <td>{{ formatDate(log.createdAt) }}</td>
+                <td>{{ formatDateOnly(log.createdAt) }}</td>
+                <td>{{ formatTimeOnly(log.createdAt) }}</td>
                 <td>
                   <span class="status-color">
                     <span class="status-swatch" :style="{ backgroundColor: statusColor(logStatusId(log)) }"></span>
@@ -60,8 +67,7 @@
                 <td>{{ signalValue(log, 'l2', 'I2') }}</td>
                 <td>{{ signalValue(log, 'l3', 'I3') }}</td>
                 <td>{{ signalValue(log, 'l4', 'I4') }}</td>
-                <td>{{ log.cycleTime ?? '-' }}</td>
-                <td>{{ log.ms ?? '-' }}</td>
+                <td>{{ formatCycleTimeSeconds(log) }}</td>
               </tr>
             </tbody>
           </table>
@@ -71,7 +77,7 @@
       <article class="panel">
         <header class="panel-header">
           <div>
-            <h2>Lịch sử trạng thái</h2>
+            <h2>Lịch sử vận hành</h2>
             <span>{{ historyPaginationText }}</span>
           </div>
           <div class="pagination-controls">
@@ -87,10 +93,17 @@
             </button>
           </div>
         </header>
-        <div class="table-scroll">
-          <table>
+        <div class="table-scroll history-table-scroll">
+          <table class="history-table">
+            <colgroup>
+              <col class="history-date-col" />
+              <col class="history-time-col" />
+              <col class="history-status-col" />
+              <col class="history-description-col" />
+            </colgroup>
             <thead>
               <tr>
+                <th>Ngày</th>
                 <th>Thời gian</th>
                 <th>Trạng thái</th>
                 <th>Mô tả</th>
@@ -98,17 +111,86 @@
             </thead>
             <tbody>
               <tr v-if="history.length === 0">
-                <td colspan="3" class="empty">Chưa có lịch sử trạng thái.</td>
+                <td colspan="4" class="empty">Chưa có lịch sử vận hành.</td>
               </tr>
               <tr v-for="item in history" :key="item._id">
-                <td>{{ formatDate(item.createdAt) }}</td>
+                <td>{{ formatDateOnly(item.createdAt) }}</td>
+                <td>{{ formatTimeOnly(item.createdAt) }}</td>
                 <td>
                   <span class="status-color">
                     <span class="status-swatch" :style="{ backgroundColor: statusColor(item.status_id) }"></span>
                     {{ statusName(item.status_id) }}
                   </span>
                 </td>
-                <td>{{ item.description || '-' }}</td>
+                <td>
+                  <span class="history-description" :title="item.description || '-'">
+                    {{ item.description || '-' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel connection-panel">
+        <header class="panel-header">
+          <div>
+            <h2>Lịch sử kết nối</h2>
+            <span>{{ connectionPaginationText }}</span>
+          </div>
+          <div class="pagination-controls">
+            <button
+              type="button"
+              :disabled="!canGoPreviousConnectionPage"
+              @click="changeConnectionPage(connectionPagination.page - 1)"
+            >
+              Trước
+            </button>
+            <button
+              type="button"
+              :disabled="!canGoNextConnectionPage"
+              @click="changeConnectionPage(connectionPagination.page + 1)"
+            >
+              Sau
+            </button>
+          </div>
+        </header>
+        <p v-if="connectionHistoryError" class="panel-message">{{ connectionHistoryError }}</p>
+        <div class="table-scroll history-table-scroll">
+          <table class="connection-history-table">
+            <colgroup>
+              <col class="history-date-col" />
+              <col class="history-time-col" />
+              <col class="connection-status-col" />
+              <col class="connection-note-col" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Ngày</th>
+                <th>Thời gian</th>
+                <th>Kết nối</th>
+                <th>Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="connectionHistory.length === 0">
+                <td colspan="4" class="empty">Chưa có lịch sử kết nối.</td>
+              </tr>
+              <tr v-for="item in connectionHistory" :key="item._id || item.createdAt || item.eventAt">
+                <td>{{ formatDateOnly(connectionEventTime(item)) }}</td>
+                <td>{{ formatTimeOnly(connectionEventTime(item)) }}</td>
+                <td>
+                  <span class="status-color">
+                    <span class="status-swatch" :style="{ backgroundColor: connectionColor(item) }"></span>
+                    {{ connectionName(item) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="history-description" :title="connectionNote(item)">
+                    {{ connectionNote(item) }}
+                  </span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -119,18 +201,26 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { getMachineById, getMachineLogs, getMachineStatusHistory } from '@/api/machines.api'
+import {
+  getMachineById,
+  getMachineConnectionHistory,
+  getMachineLogs,
+  getMachineStatusHistory
+} from '@/api/machines.api'
 import { getStatuses } from '@/api/statuses.api'
 import MachineStatusBadge from '@/components/machines/MachineStatusBadge.vue'
 import { NO_DATA_STATUS, isNoDataStatusId } from '@/constants/machine-status'
 import {
+  offMachineConnectionUpdated,
   offMachineLogCreated,
   offMachineStatusUpdated,
+  onMachineConnectionUpdated,
   onMachineLogCreated,
   onMachineStatusUpdated
 } from '@/services/socket.service'
+import { formatDateOnly, formatTimeOnly } from '@/utils/date-format'
 
 const route = useRoute()
 const machine = ref(null)
@@ -143,6 +233,9 @@ const LOG_PAGE_SIZE = 10
 const LOG_MAX_ITEMS = 50
 const LOG_STATUS_HISTORY_LIMIT = 100
 const HISTORY_PAGE_SIZE = 10
+const CONNECTION_PAGE_SIZE = 10
+const ONLINE_CONNECT_ID = '1'
+const OFFLINE_CONNECT_ID = '2'
 const logPagination = ref({
   page: 1,
   limit: LOG_PAGE_SIZE,
@@ -155,18 +248,23 @@ const historyPagination = ref({
   total: 0,
   totalPages: 1
 })
-const filters = reactive({
-  from: '',
-  to: '',
-  status_id: ''
+const connectionHistory = ref([])
+const connectionHistoryError = ref('')
+const connectionPagination = ref({
+  page: 1,
+  limit: CONNECTION_PAGE_SIZE,
+  total: 0,
+  totalPages: 1
 })
-
 const logPaginationText = computed(() => paginationText(logPagination.value, 'log'))
 const historyPaginationText = computed(() => paginationText(historyPagination.value, 'mốc'))
 const canGoPreviousLogPage = computed(() => logPagination.value.page > 1)
 const canGoNextLogPage = computed(() => logPagination.value.page < logPagination.value.totalPages)
 const canGoPreviousHistoryPage = computed(() => historyPagination.value.page > 1)
 const canGoNextHistoryPage = computed(() => historyPagination.value.page < historyPagination.value.totalPages)
+const connectionPaginationText = computed(() => paginationText(connectionPagination.value, 'mốc'))
+const canGoPreviousConnectionPage = computed(() => connectionPagination.value.page > 1)
+const canGoNextConnectionPage = computed(() => connectionPagination.value.page < connectionPagination.value.totalPages)
 
 // Giới hạn bảng log chỉ hiển thị 50 log mới nhất, dù backend còn nhiều log cũ hơn.
 function cappedLogPagination(pagination) {
@@ -184,13 +282,11 @@ function cappedLogPagination(pagination) {
 
 // Tạo query dùng chung cho log tín hiệu và lịch sử trạng thái.
 function createQuery(page, limit) {
-  return {
-    from: filters.from || undefined,
-    to: filters.to || undefined,
-    status_id: filters.status_id || undefined,
-    page,
-    limit
-  }
+  return { page, limit }
+}
+
+function createConnectionQuery(page, limit) {
+  return { page, limit }
 }
 
 // Format text phân trang cho từng bảng.
@@ -212,6 +308,24 @@ function paginationText(pagination, unit) {
 // Lấy giá trị tín hiệu từ log, hỗ trợ cả l1/l2 và I1/I2.
 function signalValue(log, field, fallbackField) {
   return log[field] ?? log[fallbackField] ?? '-'
+}
+
+function formatCycleTimeSeconds(log) {
+  const rawValue = log?.cycleTime ?? log?.cycle_time
+
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return '-'
+  }
+
+  const milliseconds = Number(rawValue)
+
+  if (Number.isNaN(milliseconds)) {
+    return '-'
+  }
+
+  const seconds = milliseconds / 1000
+
+  return seconds.toFixed(2)
 }
 
 // Sắp xếp log mới nhất trước và giới hạn số dòng hiển thị.
@@ -278,6 +392,102 @@ function statusColor(statusId) {
   const meta = statusMeta(statusId)
 
   return meta?.color_code || meta?.color || NO_DATA_STATUS.color
+}
+
+// Chuẩn hóa mọi biến thể giá trị connect_id/offline/online về đúng 2 mã chuẩn.
+function normalizeConnectId(value) {
+  const normalized = String(value ?? '').trim().toLowerCase()
+
+  if (normalized === OFFLINE_CONNECT_ID || normalized === 'offline') {
+    return OFFLINE_CONNECT_ID
+  }
+
+  return ONLINE_CONNECT_ID
+}
+
+function fallbackConnectionStatus(connectId) {
+  const normalized = normalizeConnectId(connectId)
+
+  return {
+    connect_id: normalized,
+    connect_desc: normalized === OFFLINE_CONNECT_ID ? 'Offline' : 'Online',
+    color_code: normalized === OFFLINE_CONNECT_ID ? '#DC2626' : '#16A34A'
+  }
+}
+
+// Chấp nhận value là string connect_id thô hoặc object status đầy đủ,
+// luôn trả về object status chuẩn (có fallback cho field thiếu).
+function connectionStatusFromValue(value) {
+  const isObjectValue = value && typeof value === 'object'
+  const connectId = normalizeConnectId(isObjectValue ? value.connect_id ?? value.connectId ?? value.connect_desc ?? value.name : value)
+  const fallback = fallbackConnectionStatus(connectId)
+  const meta = isObjectValue ? value : {}
+
+  return {
+    ...fallback,
+    ...meta,
+    connect_id: connectId,
+    connect_desc: meta.connect_desc || meta.name || fallback.connect_desc,
+    color_code: meta.color_code || meta.color || fallback.color_code
+  }
+}
+
+function machineConnectionStatus(item) {
+  return connectionStatusFromValue(item?.connectionStatus || item?.connect_id || item?.connectId || ONLINE_CONNECT_ID)
+}
+
+function machineConnectionName(item) {
+  return machineConnectionStatus(item).connect_desc
+}
+
+function machineConnectionColor(item) {
+  const status = machineConnectionStatus(item)
+
+  return status.color_code || status.color || fallbackConnectionStatus(status.connect_id).color_code
+}
+
+function connectionStatus(item) {
+  return connectionStatusFromValue(
+    item?.connectionStatus ||
+      item?.status ||
+      {
+        connect_id: item?.connect_id ?? item?.connectId,
+        connect_desc: item?.connect_desc,
+        color_code: item?.color_code || item?.color
+      }
+  )
+}
+
+function connectionName(item) {
+  return connectionStatus(item).connect_desc
+}
+
+function connectionColor(item) {
+  const status = connectionStatus(item)
+
+  return status.color_code || status.color || fallbackConnectionStatus(status.connect_id).color_code
+}
+
+function connectionEventTime(item) {
+  return item?.eventAt || item?.event_at || item?.createdAt || item?.created_at || item?.updatedAt || item?.updated_at
+}
+
+function previousConnectionName(item) {
+  const previousId = item?.previous_connect_id ?? item?.previousConnectId
+
+  if (previousId === undefined || previousId === null || previousId === '') {
+    return ''
+  }
+
+  return fallbackConnectionStatus(previousId).connect_desc
+}
+
+function connectionNote(item) {
+  const previousName = previousConnectionName(item)
+
+  return previousName
+    ? `Thay đổi trạng thái from ${previousName} to ${connectionName(item)}`
+    : connectionName(item)
 }
 
 // Tìm trạng thái tương ứng với thời điểm phát sinh log.
@@ -388,6 +598,14 @@ async function handleRealtimeStatus(event) {
   await Promise.all([loadMachine(), loadStatusHistory(), loadLogStatusHistory()])
 }
 
+async function handleRealtimeConnection(event) {
+  if (!machineMatchesEvent(event)) {
+    return
+  }
+
+  await Promise.all([loadMachine(), loadConnectionHistory()])
+}
+
 // Tải thông tin chi tiết máy hiện tại.
 async function loadMachine() {
   const response = await getMachineById(route.params.id)
@@ -411,6 +629,27 @@ async function loadStatusHistory() {
   const response = await getMachineStatusHistory(route.params.id, createQuery(historyPagination.value.page, HISTORY_PAGE_SIZE))
   history.value = response.data || []
   historyPagination.value = response.pagination || historyPagination.value
+}
+
+// Tải lịch sử Online/Offline riêng, không chặn hai bảng vận hành nếu backend chưa có endpoint.
+async function loadConnectionHistory() {
+  try {
+    const response = await getMachineConnectionHistory(
+      route.params.id,
+      createConnectionQuery(connectionPagination.value.page, CONNECTION_PAGE_SIZE)
+    )
+    connectionHistory.value = response.data || []
+    connectionPagination.value = response.pagination || connectionPagination.value
+    connectionHistoryError.value = ''
+  } catch (err) {
+    connectionHistory.value = []
+    connectionPagination.value = {
+      ...connectionPagination.value,
+      total: 0,
+      totalPages: 1
+    }
+    connectionHistoryError.value = 'Chưa tải được lịch sử kết nối.'
+  }
 }
 
 // Tải lịch sử trạng thái đủ rộng để tô màu trạng thái cho từng dòng log.
@@ -448,21 +687,24 @@ async function changeHistoryPage(page) {
   await loadStatusHistory()
 }
 
+// Chuyển trang cho bảng lịch sử kết nối.
+async function changeConnectionPage(page) {
+  if (page < 1 || page > connectionPagination.value.totalPages) {
+    return
+  }
+
+  connectionPagination.value.page = page
+  await loadConnectionHistory()
+}
+
 // Tải đồng thời log và lịch sử trạng thái, gom lỗi vào biến error.
 async function loadRelatedData() {
   try {
     error.value = ''
-    await Promise.all([loadLogs(), loadStatusHistory(), loadLogStatusHistory()])
+    await Promise.all([loadLogs(), loadStatusHistory(), loadLogStatusHistory(), loadConnectionHistory()])
   } catch (err) {
     error.value = err.message
   }
-}
-
-// Format timestamp sang định dạng ngày giờ Việt Nam.
-function formatDate(value) {
-  if (!value) return '-'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN')
 }
 
 onMounted(async () => {
@@ -470,6 +712,7 @@ onMounted(async () => {
     await Promise.all([loadStatuses(), loadMachine(), loadRelatedData()])
     onMachineLogCreated(handleRealtimeLog)
     onMachineStatusUpdated(handleRealtimeStatus)
+    onMachineConnectionUpdated(handleRealtimeConnection)
   } catch (err) {
     error.value = err.message
   }
@@ -478,15 +721,17 @@ onMounted(async () => {
 onUnmounted(() => {
   offMachineLogCreated(handleRealtimeLog)
   offMachineStatusUpdated(handleRealtimeStatus)
+  offMachineConnectionUpdated(handleRealtimeConnection)
 })
 </script>
 
 <style scoped>
 .detail-page {
+  --detail-table-visible-height: 320px;
   display: grid;
-  gap: 18px;
+  gap: 14px;
   min-height: 50vh;
-  padding: 28px;
+  padding: 20px;
   background: #f8fafc;
 }
 
@@ -496,11 +741,10 @@ a {
 }
 
 .detail-header,
-.filters,
 .panel {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 16px;
+  padding: 12px 14px;
   background: #ffffff;
 }
 
@@ -508,8 +752,34 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 88px;
-  padding: 18px 16px;
+  min-height: 64px;
+  padding: 12px 16px;
+}
+
+.detail-statuses,
+.connection-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
+.detail-statuses {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.connection-badge {
+  gap: 8px;
+  color: #111827;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.connection-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
 }
 
 h1,
@@ -528,44 +798,19 @@ p {
   color: #475569;
 }
 
-.filters {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
-  gap: 12px;
-}
-
-label {
-  display: grid;
-  gap: 6px;
-  font-weight: 700;
-}
-
-input,
-select,
-button {
-  height: 38px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 0 12px;
-}
-
-button {
-  align-self: end;
-  background: #0f62b4;
-  color: #ffffff;
-  cursor: pointer;
-  font-weight: 800;
-}
-
 .grid {
   display: grid;
   align-items: start;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
 }
 
 .panel {
   min-width: 0;
+}
+
+.connection-panel {
+  grid-column: 1 / -1;
 }
 
 .panel-header {
@@ -594,10 +839,12 @@ button {
 .pagination-controls button {
   align-self: center;
   height: 32px;
-  border-color: #d1d5db;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
   padding: 0 10px;
   background: #ffffff;
   color: #0f172a;
+  cursor: pointer;
   font-weight: 700;
 }
 
@@ -607,11 +854,19 @@ button {
 }
 
 .table-scroll {
-  margin-top: 12px;
+  margin-top: 8px;
   overflow: auto;
 }
 
 .log-table-scroll {
+  max-height: var(--detail-table-visible-height);
+  border: 1px solid #edf2f7;
+  border-radius: 6px;
+  overflow-anchor: none;
+}
+
+.history-table-scroll {
+  max-height: var(--detail-table-visible-height);
   border: 1px solid #edf2f7;
   border-radius: 6px;
   overflow-anchor: none;
@@ -620,25 +875,67 @@ button {
 table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .table-scroll table {
   margin-top: 0;
 }
 
+.history-table {
+  table-layout: fixed;
+  min-width: 640px;
+}
+
+.connection-history-table {
+  table-layout: fixed;
+  min-width: 980px;
+}
+
+.history-date-col {
+  width: 112px;
+}
+
+.history-time-col {
+  width: 96px;
+}
+
+.history-status-col {
+  width: 128px;
+}
+
+.history-description-col {
+  width: auto;
+}
+
+.connection-status-col {
+  width: 130px;
+}
+
+.connection-note-col {
+  width: auto;
+}
+
 th,
 td {
   border-bottom: 1px solid #edf2f7;
-  padding: 10px;
+  padding: 7px 10px;
   text-align: left;
+  vertical-align: middle;
 }
 
 th {
   background: #f8fafc;
+  white-space: nowrap;
 }
 
-.log-table-scroll th {
+td:first-child,
+td:nth-child(2) {
+  white-space: nowrap;
+}
+
+.log-table-scroll th,
+.history-table-scroll th {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -649,10 +946,28 @@ th {
   color: #991b1b;
 }
 
+.panel-message {
+  margin-top: 10px;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .status-color {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
+}
+
+.history-description {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -664,12 +979,13 @@ th {
 }
 
 @media (max-width: 1100px) {
-  .grid,
-  .filters {
+  .grid {
     grid-template-columns: 1fr;
   }
 
   .panel-header,
+  .detail-header,
+  .detail-statuses,
   .panel-header div:first-child {
     align-items: stretch;
     flex-direction: column;

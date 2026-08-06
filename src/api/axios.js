@@ -8,6 +8,8 @@ const apiClient = axios.create({
   }
 })
 
+// Trả thẳng response.data để nơi gọi API không phải destructure lại,
+// và gom lỗi về 1 Error có message dễ hiểu để hiển thị cho người dùng.
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {

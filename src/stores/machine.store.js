@@ -39,14 +39,19 @@ function latestLogTime(log) {
   return log?.createdAt || log?.created_at || log?.updatedAt || log?.updated_at || log?.timestamp || null
 }
 
+// Kiểm tra field có giá trị thật, không tính rỗng/null/undefined.
 function hasSignalValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== ''
 }
 
+// Khóa để đối chiếu cùng 1 máy giữa 2 lần tải (ưu tiên _id, rồi id, rồi code).
 function machineIdentity(machine) {
   return String(machine?._id || machine?.id || machine?.code || '')
 }
 
+// Response fetchMachines() không kèm các field chỉ cập nhật qua realtime
+// (tín hiệu cuối, cycle time...). Nếu không giữ lại, mỗi lần load lại danh
+// sách sẽ làm mất dữ liệu realtime vừa nhận được qua socket.
 function preserveRealtimeSignalFields(machine, previousMachine) {
   if (!previousMachine) {
     return machine
@@ -77,6 +82,7 @@ function preserveRealtimeSignalFields(machine, previousMachine) {
   return machine
 }
 
+// Ghép danh sách máy mới tải với danh sách cũ để không mất field realtime.
 function mergeMachineRefresh(machines, previousMachines) {
   const previousById = new Map(previousMachines.map((machine) => [machineIdentity(machine), machine]))
 
@@ -184,6 +190,51 @@ function realtimeStatusPayload(event, payload = eventPayload(event)) {
       latestLogTime(payload) ??
       latestLogTime(event)
   }
+}
+
+// Chuẩn hóa trạng thái kết nối từ event realtime về đúng shape dùng chung
+// trong app (connect_id, tên hiển thị, màu), có fallback khi backend
+// không gửi kèm object status đầy đủ.
+function normalizeConnectionStatus(status, connectId) {
+  const statusConnectId = String(status?.connect_id ?? connectId ?? '1')
+  const colorCode = status?.color_code || status?.color || '#6B7280'
+
+  return {
+    connect_id: statusConnectId,
+    connect_desc: status?.connect_desc || (statusConnectId === '2' ? 'Offline' : 'Online'),
+    color: colorCode,
+    color_code: colorCode
+  }
+}
+
+// Chuẩn hóa payload event Online/Offline nhận qua socket.
+function realtimeConnectionPayload(event) {
+  const status = event?.connectionStatus || event?.status
+  const connectId =
+    eventField(event, event, ['connectId', 'connect_id']) ??
+    status?.connect_id
+
+  if (connectId === undefined || connectId === null || connectId === '') {
+    return null
+  }
+
+  return {
+    scope: event?.scope || '',
+    machineId: event?.machineId || event?.machine_id || event?.machine?._id || event?.machine?.id,
+    machineCode: event?.machineCode || event?.machine_code || event?.machine?.code,
+    connect_id: String(connectId),
+    connectionStatus: normalizeConnectionStatus(status, connectId),
+    updatedAt: event?.updatedAt || event?.updated_at || new Date().toISOString()
+  }
+}
+
+// Kiểm tra event Online/Offline có thuộc máy này không (so theo id hoặc code).
+function machineMatchesConnectionEvent(machine, payload) {
+  return (
+    (payload.machineId && String(machine._id) === String(payload.machineId)) ||
+    (payload.machineId && String(machine.id) === String(payload.machineId)) ||
+    (payload.machineCode && String(machine.code) === String(payload.machineCode))
+  )
 }
 
 export const useMachineStore = defineStore('machine', {
@@ -422,6 +473,51 @@ export const useMachineStore = defineStore('machine', {
       machine.lastSignalLog = payload
       machine.highlightedAt = Date.now()
       this.applyRealtimeStatus(machine, event, payload)
+    },
+
+    // Xử lý event realtime đổi Online/Offline.
+    applyMachineConnectionUpdate(event) {
+      const payload = realtimeConnectionPayload(event)
+
+      if (!payload) {
+        return false
+      }
+
+      if (payload.scope === 'all') {
+        for (const machine of this.machines) {
+          machine.connect_id = payload.connect_id
+          machine.connectionStatus = payload.connectionStatus
+          machine.updatedAt = payload.updatedAt || machine.updatedAt
+          machine.highlightedAt = Date.now()
+        }
+
+        if (this.selectedMachine) {
+          this.selectedMachine.connect_id = payload.connect_id
+          this.selectedMachine.connectionStatus = payload.connectionStatus
+          this.selectedMachine.updatedAt = payload.updatedAt || this.selectedMachine.updatedAt
+        }
+
+        return Boolean(this.machines.length || this.selectedMachine)
+      }
+
+      const machine = this.machines.find((item) => machineMatchesConnectionEvent(item, payload))
+
+      if (machine) {
+        machine.connect_id = payload.connect_id
+        machine.connectionStatus = payload.connectionStatus
+        machine.updatedAt = payload.updatedAt || machine.updatedAt
+        machine.highlightedAt = Date.now()
+      }
+
+      const selectedMatches = this.selectedMachine && machineMatchesConnectionEvent(this.selectedMachine, payload)
+
+      if (selectedMatches) {
+        this.selectedMachine.connect_id = payload.connect_id
+        this.selectedMachine.connectionStatus = payload.connectionStatus
+        this.selectedMachine.updatedAt = payload.updatedAt || this.selectedMachine.updatedAt
+      }
+
+      return Boolean(machine || selectedMatches)
     },
 
     // Reset filter.

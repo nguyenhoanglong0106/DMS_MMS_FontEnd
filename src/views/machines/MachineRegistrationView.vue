@@ -30,6 +30,7 @@
       :machines="machineStore.machines"
       :pagination="machineStore.pagination"
       :loading="machineStore.loading"
+      :connection-statuses="connectionStatuses"
       @edit="openEditModal"
       @delete="deleteTarget = $event"
       @page-change="changePage"
@@ -60,21 +61,21 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getLocations } from '@/api/locations.api'
+import { getMachineConnectionStatuses } from '@/api/machineConnectionStatuses.api'
 import { getMachines } from '@/api/machines.api'
 import MachineDeleteDialog from '@/components/machines/MachineDeleteDialog.vue'
 import MachineFilter from '@/components/machines/MachineFilter.vue'
 import MachineFormModal from '@/components/machines/MachineFormModal.vue'
 import MachineTable from '@/components/machines/MachineTable.vue'
 import {
-  offMachineLogCreated,
-  offMachineStatusUpdated,
-  onMachineLogCreated,
-  onMachineStatusUpdated
+  offMachineConnectionUpdated,
+  onMachineConnectionUpdated
 } from '@/services/socket.service'
 import { useMachineStore } from '@/stores/machine.store'
 
 const machineStore = useMachineStore()
 const locations = ref([])
+const connectionStatuses = ref([])
 const machinesForValidation = ref([])
 const showForm = ref(false)
 const editingMachine = ref(null)
@@ -84,6 +85,7 @@ const message = ref('')
 let messageTimer = null
 const VALIDATION_PAGE_SIZE = 100
 
+// Hiện thông báo thành công tạm thời, tự ẩn sau 2.5s.
 function showMessage(text) {
   message.value = text
 
@@ -97,20 +99,15 @@ function showMessage(text) {
   }, 2500)
 }
 
-// Cập nhật trạng thái máy trên danh sách khi backend phát event đổi trạng thái.
-function handleRealtimeStatus(event) {
-  machineStore.updateMachineStatusRealtime(event)
-}
-
-// Cập nhật log cuối và highlight máy khi backend phát event log mới.
-function handleRealtimeLog(event) {
-  machineStore.updateMachineLogRealtime(event)
-}
-
 // Tải dữ liệu phụ trợ cho form/filter.
 async function loadReferenceData() {
-  const locationResponse = await getLocations()
+  const [locationResponse, connectionStatusResponse] = await Promise.all([
+    getLocations(),
+    getMachineConnectionStatuses()
+  ])
+
   locations.value = locationResponse.data || []
+  connectionStatuses.value = connectionStatusResponse.data || []
 }
 
 // Tải danh sách máy riêng cho validate Signal Keys, không làm ảnh hưởng phân trang bảng.
@@ -217,26 +214,28 @@ async function changeSort(sortBy) {
   await machineStore.fetchMachines()
 }
 
+function handleMachineConnectionUpdated(event) {
+  machineStore.applyMachineConnectionUpdate(event)
+}
+
 onMounted(async () => {
   machineStore.filters.noData = ''
   machineStore.filters.abnormal = ''
+  onMachineConnectionUpdated(handleMachineConnectionUpdated)
   await Promise.all([
     loadReferenceData(),
     machineStore.fetchMachines(),
     machineStore.fetchStatusCount(),
     loadMachinesForValidation()
   ])
-  onMachineLogCreated(handleRealtimeLog)
-  onMachineStatusUpdated(handleRealtimeStatus)
 })
 
 onUnmounted(() => {
+  offMachineConnectionUpdated(handleMachineConnectionUpdated)
+
   if (messageTimer) {
     clearTimeout(messageTimer)
   }
-
-  offMachineLogCreated(handleRealtimeLog)
-  offMachineStatusUpdated(handleRealtimeStatus)
 })
 </script>
 

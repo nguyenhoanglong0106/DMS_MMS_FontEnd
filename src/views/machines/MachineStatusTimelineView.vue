@@ -20,8 +20,12 @@
         </select>
       </label>
       <label>
-        Ngày
-        <input v-model="selectedDate" type="date" @change="handleTimelineFilterChange" />
+        Từ ngày
+        <input v-model="fromDate" type="date" @change="handleTimelineFilterChange" />
+      </label>
+      <label>
+        Đến ngày
+        <input v-model="toDate" type="date" @change="handleTimelineFilterChange" />
       </label>
     </section>
 
@@ -29,18 +33,42 @@
 
     <section class="timeline-panel">
       <div class="timeline-meta">
-        <div>
-          <strong>{{ displayDate }}</strong>
+        <div class="timeline-title">
+          <strong>{{ displayRange }}</strong>
           <span>{{ selectedMachine?.code || '-' }} - {{ selectedMachine?.name || 'Chọn máy' }}</span>
         </div>
-        <span>Ghi nhận đến {{ formatTime(timelineFillEnd) }}</span>
+        <span class="timeline-pill">
+          <i class="fas fa-clock" aria-hidden="true"></i>
+          Ghi nhận
+          <strong>{{ formatTimelineEndpoint(timelineFillEnd) }}</strong>
+        </span>
+      </div>
+
+      <div class="timeline-toolbar">
+        <div class="zoom-actions">
+          <button type="button" title="Thu nhỏ" @click="zoomOut">
+            <i class="fas fa-search-minus" aria-hidden="true"></i>
+          </button>
+          <button type="button" title="Phóng to" @click="zoomIn">
+            <i class="fas fa-search-plus" aria-hidden="true"></i>
+          </button>
+          <button type="button" title="Reload" @click="resetViewport">
+            <i class="fas fa-sync-alt" aria-hidden="true"></i>
+          </button>
+        </div>
+        <span class="timeline-window">
+          <i class="fas fa-arrows-alt-h" aria-hidden="true"></i>
+          {{ viewportLabel }}
+        </span>
       </div>
 
       <div class="timeline-scale" aria-hidden="true">
-        <span v-for="tick in axisTicks" :key="tick.label">{{ tick.label }}</span>
+        <span v-for="tick in axisTicks" :key="tick.key" :style="{ left: `${tick.leftPercent}%` }">
+          {{ tick.label }}
+        </span>
       </div>
 
-      <div class="timeline-track">
+      <div class="timeline-track" @pointerdown="startTimelinePan" @wheel.prevent="handleTimelineWheel">
         <div
           v-for="segment in displaySegments"
           :key="`${segment.from}-${segment.to}-${segment.status_id || 'none'}`"
@@ -56,9 +84,18 @@
         >
           <span v-if="segment.widthPercent >= 8">{{ segment.status_name }}</span>
         </div>
+        <div
+          v-if="selectedTimelineMarker"
+          class="timeline-marker"
+          :style="{ left: `${selectedTimelineMarker.leftPercent}%` }"
+          :title="selectedTimelineMarker.title"
+          aria-hidden="true"
+        ></div>
       </div>
 
-      <p v-if="!loading && displayMarkers.length === 0" class="empty">Không có thay đổi trạng thái trong ngày này.</p>
+      <p v-if="!loading && displayMarkers.length === 0" class="empty">
+        Không có thay đổi trạng thái trong khoảng thời gian này.
+      </p>
     </section>
 
     <section class="summary-grid">
@@ -91,6 +128,7 @@
       <table>
         <thead>
           <tr>
+            <th>Ngày</th>
             <th>Thời gian</th>
             <th>Trạng thái</th>
             <th>Mô tả</th>
@@ -98,9 +136,10 @@
         </thead>
         <tbody>
           <tr v-if="displayMarkers.length === 0">
-            <td colspan="3" class="empty">Chưa có lịch sử trạng thái trong ngày.</td>
+            <td colspan="4" class="empty">Chưa có lịch sử trạng thái trong khoảng thời gian.</td>
           </tr>
           <tr v-for="marker in paginatedMarkers" :key="marker._id">
+            <td>{{ formatMarkerDate(marker.createdAt) }}</td>
             <td>{{ formatTimeOnly(marker.createdAt) }}</td>
             <td>
               <span class="status-label">
@@ -127,25 +166,42 @@ import {
   onMachineLogCreated,
   onMachineStatusUpdated
 } from '@/services/socket.service'
+import {
+  formatDateFromInput,
+  formatDateTime,
+  formatDateHourMinute,
+  formatDateOnly,
+  formatHourMinute,
+  formatTimeOnly
+} from '@/utils/date-format'
 
 const machines = ref([])
 const locations = ref([])
 const selectedLocationId = ref('')
 const selectedMachineId = ref('')
-const selectedDate = ref(todayInputValue())
+const todayDateValue = todayInputValue()
+const fromDate = ref(todayDateValue)
+const toDate = ref(todayDateValue)
 const timeline = ref(null)
 const loading = ref(false)
 const error = ref('')
 const eventPage = ref(1)
+const viewportStartPercent = ref(0)
+const viewportEndPercent = ref(100)
+const selectedTimelineMs = ref(null)
 const EVENT_PAGE_SIZE = 8
 const MACHINE_DROPDOWN_LIMIT = 100
-const AXIS_HOURS = [0, 6, 12, 18, 24]
+const MINUTE_MS = 60 * 1000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+const VIEWPORT_MIN_MS = 5 * MINUTE_MS
 const currentTime = ref(new Date())
 let clockTimer = null
+let dragState = null
 
 const selectedMachine = computed(() => machines.value.find((machine) => machine._id === selectedMachineId.value) || null)
 const timelineFillEnd = computed(() => {
-  const latestSegmentEnd = displaySegments.value.reduce((latest, segment) => {
+  const latestSegmentEnd = buildDisplaySegments().reduce((latest, segment) => {
     const segmentEnd = parseTime(segment.to)
 
     return segmentEnd === null ? latest : Math.max(latest, segmentEnd)
@@ -157,17 +213,54 @@ const timelineFillEnd = computed(() => {
 
   return timeline.value?.filledTo || timeline.value?.to
 })
-const displayDate = computed(() => {
-  if (!selectedDate.value) return '-'
+const timelineStartMs = computed(() => parseTime(timeline.value?.from) ?? parseTime(dateRange()?.from) ?? 0)
+const timelineEndMs = computed(() => {
+  const fallbackEnd = parseTime(dateRange()?.to) ?? timelineStartMs.value + DAY_MS
 
-  return new Date(`${selectedDate.value}T00:00:00`).toLocaleDateString('vi-VN')
+  return parseTime(timeline.value?.to) ?? fallbackEnd
 })
-const axisTicks = computed(() =>
-  AXIS_HOURS.map((hour) => ({
-    label: hour === 24 ? '24:00' : `${String(hour).padStart(2, '0')}:00`
-  }))
+const fullTimelineTotalMs = computed(() => Math.max(timelineEndMs.value - timelineStartMs.value, 1))
+const viewportWidthPercent = computed(() => viewportEndPercent.value - viewportStartPercent.value)
+const viewportStartMs = computed(
+  () => timelineStartMs.value + (fullTimelineTotalMs.value * viewportStartPercent.value) / 100
 )
-const displaySegments = computed(() => buildDisplaySegments().map(withTimelinePercent))
+const viewportEndMs = computed(() => timelineStartMs.value + (fullTimelineTotalMs.value * viewportEndPercent.value) / 100)
+const viewportDurationMs = computed(() => Math.max(viewportEndMs.value - viewportStartMs.value, 1))
+const viewportLabel = computed(
+  () => `${formatViewportTime(viewportStartMs.value)} - ${formatViewportTime(viewportEndMs.value)}`
+)
+const orderedDates = computed(() => orderedDateValues())
+const isMultiDayRange = computed(() => orderedDates.value !== null && orderedDates.value.from !== orderedDates.value.to)
+const displayRange = computed(() => {
+  const range = orderedDates.value
+
+  if (!range) return '-'
+
+  const fromText = formatInputDate(range.from)
+  const toText = formatInputDate(range.to)
+
+  return range.from === range.to ? fromText : `${fromText} - ${toText}`
+})
+const axisTicks = computed(() => buildAxisTicks())
+const displaySegments = computed(() =>
+  buildDisplaySegments()
+    .map((segment) => withRangePercent(segment, viewportStartMs.value, viewportEndMs.value))
+    .filter(Boolean)
+)
+const selectedTimelineMarker = computed(() => {
+  if (selectedTimelineMs.value === null) {
+    return null
+  }
+
+  if (selectedTimelineMs.value < viewportStartMs.value || selectedTimelineMs.value > viewportEndMs.value) {
+    return null
+  }
+
+  return {
+    leftPercent: ((selectedTimelineMs.value - viewportStartMs.value) / viewportDurationMs.value) * 100,
+    title: formatDateTime(selectedTimelineMs.value)
+  }
+})
 const displayMarkers = computed(() =>
   [...(timeline.value?.markers || [])].sort((first, second) => {
     const firstTime = new Date(first.createdAt || first.updatedAt || 0).getTime()
@@ -199,7 +292,7 @@ const canGoNextEventPage = computed(() => eventPage.value < eventTotalPages.valu
 const statusSummary = computed(() => {
   const summary = new Map()
 
-  for (const segment of displaySegments.value) {
+  for (const segment of buildDisplaySegments()) {
     const key = segment.status_id || 'none'
     const existing = summary.get(key) || {
       statusKey: key,
@@ -218,15 +311,18 @@ const statusSummary = computed(() => {
   }))
 })
 
-// Đổi máy/ngày thì tải lại timeline.
+// Đổi máy/khoảng ngày thì tải lại timeline.
 async function handleTimelineFilterChange() {
   eventPage.value = 1
+  normalizeDateRangeInputs()
+  resetViewport()
   await loadTimeline()
 }
 
 // Đổi khu vực thì tải lại danh sách máy.
 async function handleLocationFilterChange() {
   eventPage.value = 1
+  resetViewport()
   await loadMachines()
   await loadTimeline()
 }
@@ -250,10 +346,55 @@ function todayInputValue() {
   return `${year}-${month}-${date}`
 }
 
-// Tạo khoảng 00:00-24:00 của ngày chọn.
-function dayRange(dateValue) {
-  const from = new Date(`${dateValue}T00:00:00`)
-  const to = new Date(from)
+function isValidDateInput(value) {
+  if (!value) {
+    return false
+  }
+
+  const date = new Date(`${value}T00:00:00`)
+
+  return !Number.isNaN(date.getTime())
+}
+
+function orderedDateValues(fromValue = fromDate.value, toValue = toDate.value) {
+  if (!isValidDateInput(fromValue) || !isValidDateInput(toValue)) {
+    return null
+  }
+
+  return fromValue <= toValue
+    ? { from: fromValue, to: toValue }
+    : { from: toValue, to: fromValue }
+}
+
+function normalizeDateRangeInputs() {
+  if (!fromDate.value && toDate.value) {
+    fromDate.value = toDate.value
+  }
+
+  if (!toDate.value && fromDate.value) {
+    toDate.value = fromDate.value
+  }
+
+  const range = orderedDateValues()
+
+  if (!range) {
+    return
+  }
+
+  fromDate.value = range.from
+  toDate.value = range.to
+}
+
+// Tạo khoảng từ 00:00 ngày bắt đầu đến 24:00 ngày kết thúc.
+function dateRange(fromValue = fromDate.value, toValue = toDate.value) {
+  const range = orderedDateValues(fromValue, toValue)
+
+  if (!range) {
+    return null
+  }
+
+  const from = new Date(`${range.from}T00:00:00`)
+  const to = new Date(`${range.to}T00:00:00`)
   to.setDate(to.getDate() + 1)
 
   return {
@@ -262,17 +403,150 @@ function dayRange(dateValue) {
   }
 }
 
-// Tổng thời lượng trục timeline.
-function timelineTotalMs() {
-  if (!timeline.value?.from || !timeline.value?.to) {
-    return 1
-  }
-
-  return Math.max(new Date(timeline.value.to).getTime() - new Date(timeline.value.from).getTime(), 1)
-}
-
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function minViewportPercent() {
+  return clamp((VIEWPORT_MIN_MS / fullTimelineTotalMs.value) * 100, 0.1, 100)
+}
+
+function viewportCenterPercent() {
+  return (viewportStartPercent.value + viewportEndPercent.value) / 2
+}
+
+// Set khung nhìn (0-100%), tự kẹp trong [0,100] và đảm bảo độ rộng tối thiểu
+// (không cho zoom quá sâu tới mức khung nhìn nhỏ hơn VIEWPORT_MIN_MS).
+function setViewportPercent(startPercent, endPercent) {
+  const minimum = minViewportPercent()
+  let start = clamp(startPercent, 0, 100)
+  let end = clamp(endPercent, 0, 100)
+
+  if (end - start < minimum) {
+    const center = clamp((start + end) / 2, minimum / 2, 100 - minimum / 2)
+    start = center - minimum / 2
+    end = center + minimum / 2
+  }
+
+  if (start < 0) {
+    end -= start
+    start = 0
+  }
+
+  if (end > 100) {
+    start -= end - 100
+    end = 100
+  }
+
+  viewportStartPercent.value = clamp(start, 0, 100 - minimum)
+  viewportEndPercent.value = clamp(end, viewportStartPercent.value + minimum, 100)
+}
+
+function setViewportAround(centerPercent, widthPercent) {
+  const width = clamp(widthPercent, minViewportPercent(), 100)
+  const center = clamp(centerPercent, width / 2, 100 - width / 2)
+
+  setViewportPercent(center - width / 2, center + width / 2)
+}
+
+function resetViewport() {
+  viewportStartPercent.value = 0
+  viewportEndPercent.value = 100
+  selectedTimelineMs.value = null
+}
+
+function zoomViewport(factor, anchorPercent = viewportCenterPercent()) {
+  setViewportAround(anchorPercent, viewportWidthPercent.value * factor)
+}
+
+// Tâm zoom: ưu tiên mốc đã ctrl+click, nếu chưa có thì dùng tâm viewport hiện tại.
+function zoomAnchorPercent() {
+  if (selectedTimelineMs.value === null) {
+    return viewportCenterPercent()
+  }
+
+  return ((selectedTimelineMs.value - timelineStartMs.value) / fullTimelineTotalMs.value) * 100
+}
+
+function zoomIn() {
+  zoomViewport(0.65, zoomAnchorPercent())
+}
+
+function zoomOut() {
+  zoomViewport(1.45, zoomAnchorPercent())
+}
+
+function percentFromPointer(event, element) {
+  const rect = element.getBoundingClientRect()
+
+  if (!rect.width) {
+    return 0
+  }
+
+  return clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100)
+}
+
+function timestampFromTrackPointer(event) {
+  const pointerPercent = percentFromPointer(event, event.currentTarget)
+
+  return viewportStartMs.value + (viewportDurationMs.value * pointerPercent) / 100
+}
+
+// Ctrl+click vào 1 điểm: đánh dấu mốc đó và zoom khung nhìn còn 50%, canh giữa mốc.
+function zoomIntoTimelinePoint(timestamp) {
+  const targetWidthMs = clamp(viewportDurationMs.value * 0.5, VIEWPORT_MIN_MS, fullTimelineTotalMs.value)
+  const targetWidthPercent = (targetWidthMs / fullTimelineTotalMs.value) * 100
+  const centerPercent = ((timestamp - timelineStartMs.value) / fullTimelineTotalMs.value) * 100
+
+  selectedTimelineMs.value = clamp(timestamp, timelineStartMs.value, timelineEndMs.value)
+  setViewportAround(centerPercent, targetWidthPercent)
+}
+
+function startTimelinePan(event) {
+  if (event.button !== 0) {
+    return
+  }
+
+  event.preventDefault()
+
+  if (event.ctrlKey) {
+    zoomIntoTimelinePoint(timestampFromTrackPointer(event))
+    return
+  }
+
+  dragState = {
+    startX: event.clientX,
+    rectWidth: event.currentTarget.getBoundingClientRect().width || 1,
+    startPercent: viewportStartPercent.value,
+    endPercent: viewportEndPercent.value
+  }
+
+  window.addEventListener('pointermove', handlePointerMove)
+  window.addEventListener('pointerup', stopPointerDrag, { once: true })
+}
+
+// Kéo chuột để pan (trượt ngang) khung nhìn timeline.
+function handlePointerMove(event) {
+  if (!dragState) {
+    return
+  }
+
+  const deltaPercent = ((event.clientX - dragState.startX) / dragState.rectWidth) * 100
+  const windowPercent = dragState.endPercent - dragState.startPercent
+  const panDelta = -(deltaPercent * windowPercent) / 100
+
+  setViewportPercent(dragState.startPercent + panDelta, dragState.endPercent + panDelta)
+}
+
+function stopPointerDrag() {
+  window.removeEventListener('pointermove', handlePointerMove)
+  dragState = null
+}
+
+function handleTimelineWheel(event) {
+  const factor = event.deltaY < 0 ? 0.78 : 1.28
+
+  zoomViewport(factor, zoomAnchorPercent())
 }
 
 function parseTime(value) {
@@ -285,6 +559,8 @@ function parseTime(value) {
   return Number.isNaN(time) ? null : time
 }
 
+// Điểm cuối để vẽ segment "đang diễn ra": không vượt quá thời điểm hiện tại
+// (nếu khoảng ngày chọn kéo tới hôm nay) và không vượt quá rangeEnd đã chọn.
 function displayEndTime() {
   if (!timeline.value?.from || !timeline.value?.to) {
     return null
@@ -317,6 +593,8 @@ function statusColor(status) {
   return status?.color || status?.color_code || status?.status_color || '#6B7280'
 }
 
+// Trạng thái gần nhất tính đến endTime, dùng để suy ra máy đang ở trạng thái
+// nào sau segment cuối cùng backend trả về (chưa có log mới nhưng vẫn đang chạy).
 function latestStatusBefore(endTime) {
   const statuses = [timeline.value?.previousStatusLog, ...(timeline.value?.markers || [])]
     .filter(Boolean)
@@ -329,6 +607,9 @@ function latestStatusBefore(endTime) {
   return statuses.sort((first, second) => second.statusTime - first.statusTime)[0] || null
 }
 
+// Nối thêm 1 segment "đang diễn ra" từ cuối segment thật tới displayEndTime(),
+// để timeline không dừng đột ngột dù chưa có log mới xác nhận (tránh kéo dài
+// sang tương lai khi chưa có dữ liệu thật, chỉ vẽ tới hiện tại/rangeEnd).
 function buildDisplaySegments() {
   if (!timeline.value?.from || !timeline.value?.to) {
     return []
@@ -389,16 +670,124 @@ function readableTextColor(hexColor) {
   return brightness > 160 ? '#111827' : '#ffffff'
 }
 
-// Tính vị trí và độ rộng segment.
-function withTimelinePercent(item) {
-  const rangeStart = new Date(timeline.value.from).getTime()
-  const rangeEnd = new Date(timeline.value.to).getTime()
-  const total = timelineTotalMs()
+function tickIntervalMs() {
+  const duration = viewportDurationMs.value
+
+  if (duration <= 15 * MINUTE_MS) return MINUTE_MS
+  if (duration <= HOUR_MS) return 5 * MINUTE_MS
+  if (duration <= 3 * HOUR_MS) return 15 * MINUTE_MS
+  if (duration <= 8 * HOUR_MS) return HOUR_MS
+  if (duration <= 16 * HOUR_MS) return 2 * HOUR_MS
+  if (duration <= 36 * HOUR_MS) return 6 * HOUR_MS
+  if (duration <= 3 * DAY_MS) return 12 * HOUR_MS
+  if (duration <= 10 * DAY_MS) return DAY_MS
+  if (duration <= 31 * DAY_MS) return 2 * DAY_MS
+
+  return 7 * DAY_MS
+}
+
+function localStartOfDayMs(value) {
+  const date = new Date(value)
+  date.setHours(0, 0, 0, 0)
+
+  return date.getTime()
+}
+
+function nextTickAfter(start, interval) {
+  const tolerance = MINUTE_MS / 2
+
+  if (interval >= DAY_MS) {
+    const stepDays = Math.max(Math.round(interval / DAY_MS), 1)
+    let tick = localStartOfDayMs(start)
+
+    while (tick <= start + tolerance) {
+      const next = new Date(tick)
+      next.setDate(next.getDate() + stepDays)
+      tick = next.getTime()
+    }
+
+    return tick
+  }
+
+  const dayStart = localStartOfDayMs(start)
+  let tick = dayStart
+
+  while (tick <= start + tolerance) {
+    tick += interval
+  }
+
+  return tick
+}
+
+function addTickInterval(time, interval) {
+  if (interval >= DAY_MS) {
+    const stepDays = Math.max(Math.round(interval / DAY_MS), 1)
+    const next = new Date(time)
+    next.setDate(next.getDate() + stepDays)
+
+    return next.getTime()
+  }
+
+  return time + interval
+}
+
+// Chỉ hiện ngày khi sang ngày mới, còn lại chỉ hiện giờ cho gọn.
+function buildAxisTicks() {
+  const start = viewportStartMs.value
+  const end = viewportEndMs.value
+  const interval = tickIntervalMs()
+  let lastDateKey = null
+
+  function tickLabel(time) {
+    const dateKey = localDateKey(time)
+    const showDate = isMultiDayRange.value && dateKey !== lastDateKey
+    lastDateKey = dateKey
+
+    return formatAxisTime(time, showDate)
+  }
+
+  const ticks = [
+    {
+      key: `start-${Math.round(start)}`,
+      label: tickLabel(start),
+      leftPercent: 0
+    }
+  ]
+  let nextTick = nextTickAfter(start, interval)
+
+  while (nextTick < end - MINUTE_MS / 2 && ticks.length < 12) {
+    ticks.push({
+      key: `tick-${nextTick}`,
+      label: tickLabel(nextTick),
+      leftPercent: ((nextTick - start) / Math.max(end - start, 1)) * 100
+    })
+    nextTick = addTickInterval(nextTick, interval)
+  }
+
+  ticks.push({
+    key: `end-${Math.round(end)}`,
+    label: tickLabel(end),
+    leftPercent: 100
+  })
+
+  return ticks
+}
+
+// Tính vị trí và độ rộng segment trong một khoảng thời gian.
+function withRangePercent(item, rangeStart, rangeEnd, minimumWidthPercent = 0.25) {
+  const total = Math.max(rangeEnd - rangeStart, 1)
   const rawStart = new Date(item.from || item.createdAt).getTime()
   const rawEnd = item.to ? new Date(item.to).getTime() : rawStart
-  const itemStart = clamp(Number.isNaN(rawStart) ? rangeStart : rawStart, rangeStart, rangeEnd)
-  const itemEnd = clamp(Number.isNaN(rawEnd) ? itemStart : rawEnd, itemStart, rangeEnd)
-  const widthPercent = item.to ? Math.max(((itemEnd - itemStart) / total) * 100, 0.25) : 0
+  const start = Number.isNaN(rawStart) ? rangeStart : rawStart
+  const end = Number.isNaN(rawEnd) ? start : rawEnd
+
+  if (end <= rangeStart || start >= rangeEnd) {
+    return null
+  }
+
+  const itemStart = clamp(start, rangeStart, rangeEnd)
+  const itemEnd = clamp(end, itemStart, rangeEnd)
+  const widthPercent = item.to ? Math.max(((itemEnd - itemStart) / total) * 100, minimumWidthPercent) : 0
 
   return {
     ...item,
@@ -408,28 +797,62 @@ function withTimelinePercent(item) {
   }
 }
 
-// Format ngày giờ đầy đủ.
-function formatDateTime(value) {
-  if (!value) return '-'
-  const date = new Date(value)
-
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN')
+function formatInputDate(value) {
+  return formatDateFromInput(value)
 }
 
-// Format giờ.
-function formatTimeOnly(value) {
-  if (!value) return '-'
-  const date = new Date(value)
+function formatShortDateTime(value) {
+  return formatDateHourMinute(value)
+}
 
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleTimeString('vi-VN')
+function formatTimelineEndpoint(value) {
+  return isMultiDayRange.value ? formatShortDateTime(value) : formatTime(value)
+}
+
+function formatViewportTime(value) {
+  return isMultiDayRange.value ? formatShortDateTime(value) : formatAxisTime(value)
+}
+
+function formatMarkerDate(value) {
+  return formatDateOnly(value)
 }
 
 // Format giờ/phút.
 function formatTime(value) {
-  if (!value) return '-'
+  return formatHourMinute(value)
+}
+
+// Khoá ngày (không tính giờ) để phát hiện lúc trục sang ngày mới.
+function localDateKey(value) {
   const date = new Date(value)
 
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+// Ngày rút gọn không kèm năm, dùng cho nhãn trục thời gian.
+function shortDateLabel(value) {
+  return new Date(value).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+}
+
+function formatAxisTime(value, withDate = isMultiDayRange.value) {
+  if (!value && value !== 0) return '-'
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '-'
+  }
+
+  if (!isMultiDayRange.value && Math.abs(date.getTime() - timelineEndMs.value) < 1000) {
+    return '24:00'
+  }
+
+  const timeText = formatHourMinute(date)
+
+  if (withDate) {
+    return `${shortDateLabel(date)} ${timeText}`
+  }
+
+  return timeText
 }
 
 // Format thời lượng.
@@ -446,7 +869,7 @@ function formatDuration(durationMs) {
 
 // Tooltip cho segment.
 function segmentTitle(segment) {
-  return `${segment.status_name}: ${formatTime(segment.from)} - ${formatTime(segment.to)} (${formatDuration(segment.durationMs)})`
+  return `${segment.status_name}: ${formatTimelineEndpoint(segment.from)} - ${formatTimelineEndpoint(segment.to)} (${formatDuration(segment.durationMs)})`
 }
 
 // Kiểm tra event thuộc máy đang xem.
@@ -459,9 +882,14 @@ function isSelectedMachineEvent(event) {
   )
 }
 
-// Kiểm tra event thuộc ngày đang xem.
-function isSelectedDayEvent(event) {
-  const range = dayRange(selectedDate.value)
+// Kiểm tra event thuộc khoảng thời gian đang xem.
+function isSelectedRangeEvent(event) {
+  const range = dateRange()
+
+  if (!range) {
+    return false
+  }
+
   const changedAt = new Date(event?.updatedAt || event?.createdAt || event?.log?.createdAt || Date.now()).getTime()
 
   return changedAt >= new Date(range.from).getTime() && changedAt < new Date(range.to).getTime()
@@ -492,7 +920,9 @@ async function loadLocations() {
 
 // Tải timeline hiện tại.
 async function loadTimeline() {
-  if (!selectedMachineId.value || !selectedDate.value) {
+  const range = dateRange()
+
+  if (!selectedMachineId.value || !range) {
     timeline.value = null
     return
   }
@@ -500,7 +930,7 @@ async function loadTimeline() {
   try {
     loading.value = true
     error.value = ''
-    const response = await getMachineStatusTimeline(selectedMachineId.value, dayRange(selectedDate.value))
+    const response = await getMachineStatusTimeline(selectedMachineId.value, range)
     timeline.value = response.data
     eventPage.value = Math.min(eventPage.value, eventTotalPages.value)
   } catch (err) {
@@ -512,14 +942,14 @@ async function loadTimeline() {
 
 // Reload khi trạng thái đổi.
 async function handleRealtimeStatus(event) {
-  if (isSelectedMachineEvent(event) && isSelectedDayEvent(event)) {
+  if (isSelectedMachineEvent(event) && isSelectedRangeEvent(event)) {
     await loadTimeline()
   }
 }
 
 // Reload khi có log mới.
 async function handleRealtimeLog(event) {
-  if (isSelectedMachineEvent(event) && isSelectedDayEvent(event)) {
+  if (isSelectedMachineEvent(event) && isSelectedRangeEvent(event)) {
     await loadTimeline()
   }
 }
@@ -543,6 +973,7 @@ onUnmounted(() => {
     clearInterval(clockTimer)
   }
 
+  stopPointerDrag()
   offMachineStatusUpdated(handleRealtimeStatus)
   offMachineLogCreated(handleRealtimeLog)
 })
@@ -608,7 +1039,7 @@ dt {
 
 .filters {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(220px, 1fr) 220px;
+  grid-template-columns: minmax(180px, 240px) minmax(220px, 1fr) minmax(150px, 180px) minmax(150px, 180px);
   gap: 10px;
   padding: 12px 16px;
 }
@@ -623,30 +1054,117 @@ label {
   display: grid;
   gap: 12px;
   padding: 14px 16px 16px;
+  user-select: none;
 }
 
 .timeline-meta {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.timeline-meta div {
+.timeline-title {
   display: grid;
   gap: 3px;
 }
 
-.timeline-meta strong {
+.timeline-title > strong {
   font-size: 18px;
 }
 
-.timeline-scale {
+.timeline-pill,
+.timeline-window {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.timeline-pill i,
+.timeline-window i {
+  color: #0f62b4;
+  font-size: 12px;
+}
+
+.timeline-pill strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.timeline-window {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #0f172a;
+}
+
+.timeline-toolbar {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 34px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.zoom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.zoom-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 30px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0 9px;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.zoom-actions button:hover {
+  border-color: #0f62b4;
+  color: #0f62b4;
+}
+
+.timeline-scale {
+  position: relative;
+  height: 16px;
   color: #6b7280;
   font-size: 12px;
+}
+
+.timeline-scale span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.timeline-scale span:first-child {
+  transform: translateX(0);
+}
+
+.timeline-scale span:last-child {
+  transform: translateX(-100%);
 }
 
 .timeline-track {
@@ -657,6 +1175,39 @@ label {
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   background: #f8fafc;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.timeline-track:active {
+  cursor: grabbing;
+}
+
+.timeline-marker {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  z-index: 3;
+  width: 2px;
+  border-radius: 999px;
+  background: #0f62b4;
+  box-shadow: 0 0 0 3px rgba(15, 98, 180, 0.16);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.timeline-marker::after {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #0f62b4;
+  content: '';
+  transform: translateX(-50%);
 }
 
 .timeline-segment {
@@ -776,8 +1327,12 @@ th {
   background: #f8fafc;
 }
 
-td:first-child {
+td:first-child,
+td:nth-child(2) {
   white-space: nowrap;
+}
+
+td:first-child {
   font-weight: 700;
 }
 
@@ -800,9 +1355,15 @@ td:first-child {
 
 @media (max-width: 900px) {
   .page-header,
-  .timeline-meta {
+  .timeline-meta,
+  .timeline-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .timeline-pill,
+  .timeline-window {
+    justify-content: center;
   }
 
   .filters,

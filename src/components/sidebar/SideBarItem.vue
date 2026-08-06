@@ -199,7 +199,8 @@ export default {
 }
 
 .menu-arrow {
-  font-size: 12px;
+  font-size: 13px;
+  margin-right: 12px;
   transition: 0.2s ease;
 }
 

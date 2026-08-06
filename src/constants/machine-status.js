@@ -1,3 +1,5 @@
+// Trạng thái mặc định dùng làm fallback khi master data từ API chưa tải xong
+// hoặc không tìm thấy status tương ứng.
 const MACHINE_STATUS = {
   ONLINE: {
     id: 1,
@@ -46,5 +48,3 @@ export function getStatusById(statusId) {
 
   return Object.values(MACHINE_STATUS).find((status) => status.id === Number(statusId)) || null
 }
-
-export default MACHINE_STATUS

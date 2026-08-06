@@ -20,6 +20,7 @@ const BASE_THEME_VALUES = {
   mode: 'light'
 }
 
+// Danh sách theme dựng sẵn để chọn nhanh ở trang Setting > Theme.
 export const THEME_PRESETS = [
   {
     id: 'mms-green',
@@ -88,6 +89,7 @@ export const THEME_PRESETS = [
   }
 ]
 
+// Danh sách field màu hiển thị cho form tùy chỉnh theme (key khớp với values).
 export const THEME_FIELDS = [
   { key: 'primaryColor', label: 'Màu chính' },
   { key: 'primaryHover', label: 'Màu hover' },
@@ -107,6 +109,7 @@ export const THEME_FIELDS = [
   { key: 'errorText', label: 'Chữ lỗi' }
 ]
 
+// Map key trong theme values sang tên CSS variable thực tế ở :root (App.vue).
 const CSS_VARIABLES = {
   appBg: '--app-bg',
   surfaceBg: '--surface-bg',
@@ -134,6 +137,8 @@ export function defaultThemeSettings() {
   }
 }
 
+// Đảm bảo settings luôn đủ field: thiếu key nào thì lấy từ preset gốc,
+// preset không hợp lệ thì rơi về preset đầu tiên.
 export function normalizeThemeSettings(settings = {}) {
   const preset = THEME_PRESETS.find((item) => item.id === settings.id)
   const fallback = preset || THEME_PRESETS[0]
@@ -163,6 +168,7 @@ export function readThemeSettings() {
   }
 }
 
+// Ghi các màu của theme vào CSS variable ở :root để toàn bộ giao diện đổi theo.
 export function applyTheme(settings = readThemeSettings()) {
   if (typeof document === 'undefined') {
     return settings

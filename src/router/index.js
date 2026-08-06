@@ -1,3 +1,5 @@
+// Định nghĩa toàn bộ route của ứng dụng. Dùng history mode nên server phải
+// fallback mọi đường dẫn không khớp file tĩnh về index.html khi deploy.
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeDashboardView from '@/views/HomeDashboardView.vue'
 import MachineDetailView from '@/views/machines/MachineDetailView.vue'

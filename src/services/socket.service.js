@@ -56,6 +56,20 @@ export function offMachineLogCreated(callback) {
   socket.off('machine-log-created', callback)
 }
 
+// Đăng ký listener khi Online/Offline của máy thay đổi.
+export function onMachineConnectionUpdated(callback) {
+  connectSocket().on('machine-connection-updated', callback)
+}
+
+// Hủy listener Online/Offline.
+export function offMachineConnectionUpdated(callback) {
+  if (!socket) {
+    return
+  }
+
+  socket.off('machine-connection-updated', callback)
+}
+
 // Lấy instance socket hiện tại cho các component cần đọc trạng thái connect/disconnect.
 export function getSocket() {
   return connectSocket()

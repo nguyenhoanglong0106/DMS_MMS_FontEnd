@@ -47,6 +47,7 @@ import { useRoute } from 'vue-router'
 import { getMachineStatusHistory } from '@/api/machines.api'
 import { getStatuses } from '@/api/statuses.api'
 import { NO_DATA_STATUS, isNoDataStatusId } from '@/constants/machine-status'
+import { formatDateTime as formatDate } from '@/utils/date-format'
 
 const route = useRoute()
 const history = ref([])
@@ -72,13 +73,7 @@ async function loadHistory() {
   }
 }
 
-// Format timestamp sang định dạng ngày giờ Việt Nam.
-function formatDate(value) {
-  if (!value) return '-'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN')
-}
-
+// Tra cứu master data trạng thái theo status_id để lấy tên/màu hiển thị.
 function statusMeta(statusId) {
   return statuses.value.find((status) => String(status.status_id) === String(statusId)) || null
 }

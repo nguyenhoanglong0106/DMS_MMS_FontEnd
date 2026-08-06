@@ -30,8 +30,10 @@ const props = defineProps({
 
 defineEmits(['apply', 'reset'])
 
+// Dùng state cục bộ để gõ mượt, chỉ báo lên cha khi bấm "Lọc"/"Đặt lại".
 const localFilters = reactive({ ...props.filters })
 
+// Đồng bộ lại khi cha đổi filters từ bên ngoài (vd: sau khi reset).
 watch(
   () => props.filters,
   (value) => Object.assign(localFilters, value),

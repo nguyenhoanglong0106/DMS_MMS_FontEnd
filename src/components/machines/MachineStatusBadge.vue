@@ -37,6 +37,8 @@ const props = defineProps({
   }
 })
 
+// Ưu tiên tên/màu truyền qua props (đã lấy sẵn từ master data), nếu thiếu
+// mới tra theo statusId trong constants làm fallback.
 const fallbackStatus = computed(() => getStatusById(props.statusId))
 const displayName = computed(() => props.statusName || fallbackStatus.value?.name || 'Chưa có dữ liệu')
 const displayColor = computed(() => props.statusColor || fallbackStatus.value?.color || '#6B7280')

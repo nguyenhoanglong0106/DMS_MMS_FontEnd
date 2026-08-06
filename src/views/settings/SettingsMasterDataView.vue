@@ -86,24 +86,18 @@
       </section>
     </section>
 
-    <section v-else class="master-layout">
-      <form class="master-form" @submit.prevent="saveStatus">
+    <section v-else class="status-settings-stack">
+      <section class="master-layout">
+        <form class="master-form" @submit.prevent="saveStatus">
         <header>
-          <h2>Chỉnh sửa trạng thái</h2>
+          <h2>Trạng thái vận hành</h2>
           <button v-if="editingStatus" type="button" class="icon-button secondary" title="Hủy sửa" @click="resetStatusForm">
             <i class="fas fa-times" aria-hidden="true"></i>
           </button>
         </header>
-
-        <p v-if="!editingStatus" class="form-hint">Chọn một trạng thái trong bảng để chỉnh sửa.</p>
-
-        <label>
-          Mã trạng thái cố định
-          <input v-model.trim="statusForm.status_id" type="text" placeholder="1" disabled />
-        </label>
         <label>
           Tên trạng thái
-          <input v-model.trim="statusForm.status_name" type="text" placeholder="Online" :disabled="!editingStatus" />
+          <input v-model.trim="statusForm.status_name" type="text" placeholder="Đang chạy" :disabled="!editingStatus" />
         </label>
         <label>
           Mã màu
@@ -123,11 +117,11 @@
             <span>{{ saving ? 'Đang lưu...' : 'Lưu' }}</span>
           </button>
         </footer>
-      </form>
+        </form>
 
-      <section class="table-panel">
+        <section class="table-panel">
         <header>
-          <h2>Danh sách trạng thái</h2>
+          <h2>Danh sách trạng thái vận hành</h2>
           <span>{{ statuses.length }} dòng</span>
         </header>
 
@@ -168,6 +162,101 @@
             </tbody>
           </table>
         </div>
+        </section>
+      </section>
+
+      <section class="master-layout">
+        <form class="master-form" @submit.prevent="saveConnectionStatus">
+          <header>
+            <h2>Trạng thái kết nối</h2>
+            <button
+              v-if="editingConnectionStatus"
+              type="button"
+              class="icon-button secondary"
+              title="Hủy sửa"
+              @click="resetConnectionStatusForm"
+            >
+              <i class="fas fa-times" aria-hidden="true"></i>
+            </button>
+          </header>
+          <label>
+            Tên trạng thái
+            <input
+              v-model.trim="connectionStatusForm.connect_desc"
+              type="text"
+              placeholder="Online"
+              :disabled="!editingConnectionStatus"
+            />
+          </label>
+          <label>
+            Mã màu
+            <span class="color-input">
+              <input v-model="connectionStatusForm.color_code" type="color" :disabled="!editingConnectionStatus" />
+              <input
+                v-model.trim="connectionStatusForm.color_code"
+                type="text"
+                placeholder="#16A34A"
+                :disabled="!editingConnectionStatus"
+              />
+            </span>
+          </label>
+
+          <footer>
+            <button type="button" class="secondary" @click="resetConnectionStatusForm">
+              <i class="fas fa-undo" aria-hidden="true"></i>
+              <span>Hủy</span>
+            </button>
+            <button type="submit" :disabled="saving || !editingConnectionStatus">
+              <i class="fas fa-save" aria-hidden="true"></i>
+              <span>{{ saving ? 'Đang lưu...' : 'Lưu' }}</span>
+            </button>
+          </footer>
+        </form>
+
+        <section class="table-panel">
+          <header>
+            <h2>Danh sách trạng thái kết nối</h2>
+            <span>{{ connectionStatuses.length }} dòng</span>
+          </header>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>STT</th>
+                  <th>Mã trạng thái</th>
+                  <th>Tên trạng thái</th>
+                  <th>Mã màu</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="loading">
+                  <td colspan="5" class="empty">Đang tải dữ liệu...</td>
+                </tr>
+                <tr v-else-if="connectionStatuses.length === 0">
+                  <td colspan="5" class="empty">Chưa có trạng thái kết nối.</td>
+                </tr>
+                <tr v-for="(status, index) in connectionStatuses" v-else :key="status._id || status.connect_id">
+                  <td>{{ index + 1 }}</td>
+                  <td class="code">{{ status.connect_id }}</td>
+                  <td>{{ status.connect_desc }}</td>
+                  <td>
+                    <span class="status-color">
+                      <span :style="{ backgroundColor: displayConnectionStatusColor(status) }"></span>
+                      {{ displayConnectionStatusColor(status) }}
+                    </span>
+                  </td>
+                  <td class="actions">
+                    <button type="button" class="action-icon edit" title="Sửa" @click="editConnectionStatus(status)">
+                      <i class="fas fa-edit" aria-hidden="true"></i>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </section>
     </section>
   </main>
@@ -185,6 +274,10 @@ import {
   getStatuses,
   updateStatus
 } from '@/api/statuses.api'
+import {
+  getMachineConnectionStatuses,
+  updateMachineConnectionStatus
+} from '@/api/machineConnectionStatuses.api'
 import { getStatusById } from '@/constants/machine-status'
 
 const props = defineProps({
@@ -198,11 +291,12 @@ const activeTab = computed(() => (props.section === 'statuses' ? 'statuses' : 'l
 const pageTitle = computed(() => (activeTab.value === 'statuses' ? 'Cài đặt trạng thái' : 'Cài đặt location'))
 const pageDescription = computed(() => (
   activeTab.value === 'statuses'
-    ? 'Chỉnh sửa tên và màu hiển thị của trạng thái máy.'
+    ? 'Chỉnh sửa tên và màu hiển thị của trạng thái vận hành và trạng thái kết nối.'
     : 'Quản lý master data khu vực máy.'
 ))
 const locations = ref([])
 const statuses = ref([])
+const connectionStatuses = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
@@ -218,11 +312,19 @@ const statusForm = reactive({
   status_name: '',
   color_code: '#6B7280'
 })
+const connectionStatusForm = reactive({
+  _id: '',
+  connect_id: '',
+  connect_desc: '',
+  color_code: '#6B7280'
+})
 let messageTimer = null
 
 const editingLocation = computed(() => Boolean(locationForm._id))
 const editingStatus = computed(() => Boolean(statusForm._id))
+const editingConnectionStatus = computed(() => Boolean(connectionStatusForm._id))
 
+// Hiện thông báo thành công tạm thời, tự ẩn sau 2.5s.
 function showMessage(text) {
   message.value = text
 
@@ -250,13 +352,18 @@ async function loadStatuses() {
   statuses.value = response.data || []
 }
 
+async function loadConnectionStatuses() {
+  const response = await getMachineConnectionStatuses()
+  connectionStatuses.value = response.data || []
+}
+
 async function loadCurrent() {
   loading.value = true
   error.value = ''
 
   try {
     if (activeTab.value === 'statuses') {
-      await loadStatuses()
+      await Promise.all([loadStatuses(), loadConnectionStatuses()])
     } else {
       await loadLocations()
     }
@@ -343,12 +450,40 @@ function resetStatusForm() {
   error.value = ''
 }
 
+function resetConnectionStatusForm() {
+  connectionStatusForm._id = ''
+  connectionStatusForm.connect_id = ''
+  connectionStatusForm.connect_desc = ''
+  connectionStatusForm.color_code = '#6B7280'
+  error.value = ''
+}
+
+// Chuẩn hóa màu về dạng #RRGGBB viết hoa; hỗ trợ cả input dạng rút gọn #RGB.
+function normalizeColorCode(value, fallback = '#6B7280') {
+  const color = String(value || '').trim()
+
+  if (/^#[0-9A-Fa-f]{3}$/.test(color)) {
+    const [, red, green, blue] = color
+    return `#${red}${red}${green}${green}${blue}${blue}`.toUpperCase()
+  }
+
+  if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+    return color.toUpperCase()
+  }
+
+  return fallback
+}
+
 function displayStatusColor(status) {
-  return status.color_code || status.color || getStatusById(status.status_id)?.color || '#6B7280'
+  return normalizeColorCode(status.color_code || status.color || getStatusById(status.status_id)?.color)
+}
+
+function displayConnectionStatusColor(status) {
+  return normalizeColorCode(status.color_code || status.color)
 }
 
 function isHexColor(value) {
-  return /^#[0-9A-Fa-f]{6}$/.test(value)
+  return /^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value)
 }
 
 function editStatus(status) {
@@ -356,6 +491,14 @@ function editStatus(status) {
   statusForm.status_id = status.status_id || ''
   statusForm.status_name = status.status_name || ''
   statusForm.color_code = displayStatusColor(status)
+  error.value = ''
+}
+
+function editConnectionStatus(status) {
+  connectionStatusForm._id = status._id
+  connectionStatusForm.connect_id = status.connect_id || ''
+  connectionStatusForm.connect_desc = status.connect_desc || ''
+  connectionStatusForm.color_code = displayConnectionStatusColor(status)
   error.value = ''
 }
 
@@ -367,16 +510,17 @@ async function saveStatus() {
 
   const payload = {
     status_name: statusForm.status_name.trim(),
-    color_code: statusForm.color_code.trim()
+    color_code: normalizeColorCode(statusForm.color_code)
   }
+  const colorCode = statusForm.color_code.trim()
 
   if (!payload.status_name) {
     setError('Vui lòng nhập tên trạng thái.')
     return
   }
 
-  if (!payload.color_code || !isHexColor(payload.color_code)) {
-    setError('Màu phải có dạng #RRGGBB.')
+  if (!colorCode || !isHexColor(colorCode)) {
+    setError('Màu phải có dạng #RGB hoặc #RRGGBB.')
     return
   }
 
@@ -396,11 +540,50 @@ async function saveStatus() {
   }
 }
 
+async function saveConnectionStatus() {
+  if (!editingConnectionStatus.value) {
+    setError('Vui lòng chọn trạng thái kết nối cần chỉnh sửa.')
+    return
+  }
+
+  const colorCode = connectionStatusForm.color_code.trim()
+  const payload = {
+    connect_desc: connectionStatusForm.connect_desc.trim(),
+    color_code: normalizeColorCode(colorCode)
+  }
+
+  if (!payload.connect_desc) {
+    setError('Vui lòng nhập tên trạng thái kết nối.')
+    return
+  }
+
+  if (!colorCode || !isHexColor(colorCode)) {
+    setError('Màu phải có dạng #RGB hoặc #RRGGBB.')
+    return
+  }
+
+  saving.value = true
+  error.value = ''
+
+  try {
+    await updateMachineConnectionStatus(connectionStatusForm._id, payload)
+    showMessage('Cập nhật trạng thái kết nối thành công.')
+
+    resetConnectionStatusForm()
+    await loadConnectionStatuses()
+  } catch (saveError) {
+    setError(saveError.message)
+  } finally {
+    saving.value = false
+  }
+}
+
 watch(
   () => props.section,
   () => {
     resetLocationForm()
     resetStatusForm()
+    resetConnectionStatusForm()
     loadCurrent()
   }
 )
@@ -484,20 +667,16 @@ button:disabled {
   color: #991b1b;
 }
 
-.form-hint {
-  border-radius: 6px;
-  padding: 10px 12px;
-  background: #f8fafc;
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .master-layout {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.status-settings-stack {
+  display: grid;
+  gap: 16px;
 }
 
 .master-form,

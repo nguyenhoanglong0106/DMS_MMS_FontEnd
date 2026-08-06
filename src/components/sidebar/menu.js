@@ -1,3 +1,4 @@
+// Cấu trúc menu sidebar; mục có "children" sẽ hiện submenu khi click.
 export const sidebarMenus = [
   {
     title: 'Home',

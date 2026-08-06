@@ -122,6 +122,8 @@ function findDuplicateSignalKey(signalKeys) {
   return ''
 }
 
+// Tìm xem có máy khác (khác máy đang sửa) đã dùng chung Signal Key chưa,
+// vì mỗi Signal Key chỉ được gắn cho đúng 1 máy.
 function findMachineUsingSignalKey(signalKeys) {
   const currentMachineId = props.machine?._id || props.machine?.id
   const submittedKeys = new Set(signalKeys.map(normalizedSignalKey))
@@ -239,11 +241,6 @@ label {
   gap: 6px;
   color: #374151;
   font-weight: 700;
-}
-
-.checkbox {
-  display: flex;
-  align-items: center;
 }
 
 input,
