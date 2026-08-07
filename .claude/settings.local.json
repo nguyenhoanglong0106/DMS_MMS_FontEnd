@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(node -e ' *)",
-      "Bash(node --check /tmp/_check.mjs)"
+      "Bash(node --check /tmp/_check.mjs)",
+      "Bash(cd \"d:/User Data/Longn Data\" && ls)",
+      "Read(//d/User Data/Longn Data/**)"
     ]
   }
 }
