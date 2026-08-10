@@ -439,7 +439,7 @@ function normalizeLocationOverview(areas) {
   return [...areas]
     .map((area) => ({
       ...area,
-      machines: [...(area.machines || [])].sort(compareMachineByCode)
+      machines: [...(area.machines || [])].sort(compareMachineByConnectionThenCode)
     }))
     .sort(compareAreaByName)
 }
@@ -456,6 +456,18 @@ function compareMachineByCode(left, right) {
     numeric: true,
     sensitivity: 'base'
   })
+}
+
+// Máy offline hiển thị trước, máy online hiển thị sau; cùng nhóm thì sắp theo mã máy.
+function compareMachineByConnectionThenCode(left, right) {
+  const leftRank = machineIsOnline(left) ? 1 : 0
+  const rightRank = machineIsOnline(right) ? 1 : 0
+
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank
+  }
+
+  return compareMachineByCode(left, right)
 }
 
 function bindSocketState() {

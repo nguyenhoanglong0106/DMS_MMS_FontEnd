@@ -338,7 +338,18 @@ function compareMachinePosition(left, right) {
     return locationDiff
   }
 
+  const connectionDiff = machineConnectionRank(left) - machineConnectionRank(right)
+
+  if (connectionDiff !== 0) {
+    return connectionDiff
+  }
+
   return compareNaturalText(left.code, right.code)
+}
+
+// Máy offline xếp trước máy online trong cùng khu vực.
+function machineConnectionRank(machine) {
+  return machineConnectionName(machine) === 'Online' ? 1 : 0
 }
 
 function compareNaturalText(left, right) {
