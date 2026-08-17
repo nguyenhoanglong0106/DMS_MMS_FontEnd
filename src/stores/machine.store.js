@@ -244,6 +244,7 @@ export const useMachineStore = defineStore('machine', {
     loading: false,
     saving: false,
     error: '',
+    fetchRequestId: 0,
     pagination: {
       page: 1,
       limit: 20,
@@ -273,6 +274,8 @@ export const useMachineStore = defineStore('machine', {
   actions: {
     // Tải danh sách máy theo filter.
     async fetchMachines(extraParams = {}, options = {}) {
+      const requestId = this.fetchRequestId + 1
+      this.fetchRequestId = requestId
       this.loading = true
       this.error = ''
 
@@ -284,36 +287,84 @@ export const useMachineStore = defineStore('machine', {
           ...extraParams
         })
 
+        if (requestId !== this.fetchRequestId) {
+          return false
+        }
+
         this.machines = mergeMachineRefresh(response.data || [], this.machines)
         this.pagination = response.pagination || this.pagination
-        if (options.includeLatestSignals !== false) {
-          await this.fetchLatestSignals()
+
+        if (options.includeLatestSignals === true) {
+          await this.fetchLatestSignals(requestId)
         }
+
+        if (requestId !== this.fetchRequestId) {
+          return false
+        }
+
         this.applyStatusCountFallback()
+
+        if (options.backgroundLatestSignals === true) {
+          this.fetchLatestSignals(requestId)
+        }
+
+        return true
       } catch (error) {
-        this.error = error.message
+        if (requestId === this.fetchRequestId) {
+          this.error = error.message
+        }
+
+        return false
       } finally {
-        this.loading = false
+        if (requestId === this.fetchRequestId) {
+          this.loading = false
+        }
       }
     },
 
     // Lấy tín hiệu cuối cho từng máy.
-    async fetchLatestSignals() {
+    async fetchLatestSignals(requestId = this.fetchRequestId) {
+      const targetMachines = [...this.machines]
       const results = await Promise.allSettled(
-        this.machines.map(async (machine) => {
+        targetMachines.map(async (machine) => {
           const response = await getMachineLogs(machine._id, { limit: 1 })
           const latestLog = Array.isArray(response.data) ? response.data[0] : null
 
-          machine.lastSignalAt = latestLogTime(latestLog)
-          machine.lastSignalLog = latestLog
+          return {
+            machine,
+            latestLog
+          }
         })
       )
+
+      if (requestId !== this.fetchRequestId) {
+        return false
+      }
+
+      const visibleMachines = new Set(this.machines.map(machineIdentity))
+
+      for (const result of results) {
+        if (result.status !== 'fulfilled') {
+          continue
+        }
+
+        const { machine, latestLog } = result.value
+
+        if (!visibleMachines.has(machineIdentity(machine))) {
+          continue
+        }
+
+        machine.lastSignalAt = latestLogTime(latestLog)
+        machine.lastSignalLog = latestLog
+      }
 
       const rejected = results.find((result) => result.status === 'rejected')
 
       if (rejected) {
         this.error = rejected.reason?.message || 'Không tải được tín hiệu cuối'
       }
+
+      return true
     },
 
     // Tải chi tiết máy.
@@ -454,10 +505,10 @@ export const useMachineStore = defineStore('machine', {
       const machine = this.machines.find((item) => machineMatchesLogEvent(item, event))
 
       if (!machine) {
-        return
+        return false
       }
 
-      this.applyRealtimeStatus(machine, event)
+      return this.applyRealtimeStatus(machine, event)
     },
 
     // Xử lý event log mới.
@@ -466,13 +517,15 @@ export const useMachineStore = defineStore('machine', {
       const machine = this.machines.find((item) => machineMatchesLogEvent(item, event))
 
       if (!machine) {
-        return
+        return false
       }
 
       machine.lastSignalAt = latestLogTime(payload) || latestLogTime(event) || new Date().toISOString()
       machine.lastSignalLog = payload
       machine.highlightedAt = Date.now()
       this.applyRealtimeStatus(machine, event, payload)
+
+      return true
     },
 
     // Xử lý event realtime đổi Online/Offline.

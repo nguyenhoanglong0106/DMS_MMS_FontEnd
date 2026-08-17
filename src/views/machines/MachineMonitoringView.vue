@@ -1,45 +1,80 @@
 <template>
-  <main class="monitor-page">
-    <header class="page-header">
-      <div>
-        <h1>Giám sát máy</h1>
-        <p>
-          <span :class="socketConnected ? 'online' : 'offline'">
-            {{ socketConnected ? 'Socket.IO đã kết nối' : 'Socket.IO mất kết nối' }}
-          </span>
-          <span>{{ displayedTotalText }}</span>
-        </p>
-      </div>
-      <button type="button" class="reload-button" @click="reload">
-        <i class="fas fa-sync-alt" aria-hidden="true"></i>
-        <span>Reload</span>
-      </button>
-    </header>
+  <main class="monitor-page" :class="{ 'is-filter-collapsed': filterCollapsed }">
+    <section class="monitor-shell" :style="filterPanelStyle">
+      <aside
+        ref="filterDockRef"
+        class="filter-dock"
+        :class="{ 'is-collapsed': filterCollapsed }"
+        aria-label="Bộ lọc giám sát máy"
+      >
+        <header class="filter-dock-header">
+          <div v-show="!filterCollapsed" class="filter-title">
+            <h1>Giám sát máy</h1>
+            <p>{{ displayedTotalText }}</p>
+          </div>
 
-    <section class="control-panel">
-      <input
-        v-model.trim="machineStore.filters.keyword"
-        type="search"
-        placeholder="Tìm mã máy hoặc tên máy"
-        @keyup.enter="reload"
-      />
+          <button
+            type="button"
+            class="dock-toggle icon-button"
+            :title="filterCollapsed ? 'Mở bộ lọc' : 'Ẩn bộ lọc'"
+            :aria-label="filterCollapsed ? 'Mở bộ lọc' : 'Ẩn bộ lọc'"
+            @click="toggleFilterPanel"
+          >
+            <i :class="filterCollapsed ? 'fas fa-angle-right' : 'fas fa-angle-left'" aria-hidden="true"></i>
+          </button>
+        </header>
 
-      <select v-model="machineStore.filters.location_id" @change="reload">
-        <option value="">Tất cả khu vực</option>
-        <option v-for="location in locations" :key="location.location_id" :value="location.location_id">
-          {{ location.location_name }}
-        </option>
-      </select>
+        <span v-show="filterCollapsed" class="filter-rail-label">
+          <span>Bộ</span>
+          <span>lọc</span>
+        </span>
 
-      <label class="stable-toggle">
-        <input v-model="showStable" type="checkbox" />
-        <span>Hiện máy ổn định</span>
-      </label>
+        <div v-show="!filterCollapsed" class="filter-dock-body">
+          <label class="filter-field">
+            <span>Tìm kiếm</span>
+            <span class="search-control">
+              <i class="fas fa-search" aria-hidden="true"></i>
+              <input
+                v-model.trim="machineStore.filters.keyword"
+                type="search"
+                placeholder="Tìm mã máy hoặc tên máy"
+                @keyup.enter="applyMonitoringFilterChange"
+              />
+            </span>
+          </label>
 
-      <button type="button" class="secondary-button" @click="resetMonitoringFilters">Đặt lại</button>
-    </section>
+          <label class="filter-field">
+            <span>Khu vực</span>
+            <select v-model="machineStore.filters.location_id" @change="applyMonitoringFilterChange">
+              <option value="">Tất cả khu vực</option>
+              <option v-for="location in locations" :key="location.location_id" :value="location.location_id">
+                {{ location.location_name }}
+              </option>
+            </select>
+          </label>
 
-    <section class="status-strip">
+          <label class="stable-toggle">
+            <input v-model="showStable" type="checkbox" />
+            <span class="toggle-track" aria-hidden="true"></span>
+            <span>Hiện máy ổn định</span>
+          </label>
+
+          <button type="button" class="secondary-button reset-button" @click="resetMonitoringFilters">
+            <i class="fas fa-undo" aria-hidden="true"></i>
+            <span>Đặt lại bộ lọc</span>
+          </button>
+        </div>
+
+        <span
+          v-show="!filterCollapsed"
+          class="filter-resize-handle"
+          aria-hidden="true"
+          @pointerdown="startFilterResize"
+        ></span>
+      </aside>
+
+      <section class="monitor-content">
+        <section class="status-strip">
       <article class="strip-item is-total">
         <span>Tổng máy</span>
         <strong>{{ machineStore.pagination.total || machineStore.machines.length }}</strong>
@@ -56,9 +91,9 @@
         <span>Đang ổn định</span>
         <strong>{{ stableMachines.length }}</strong>
       </article>
-    </section>
+        </section>
 
-    <section class="command-center">
+        <section class="command-center">
       <section class="priority-panel">
         <header class="section-header">
           <div>
@@ -147,9 +182,9 @@
           </ul>
         </div>
       </aside>
-    </section>
+        </section>
 
-    <section class="plant-board">
+        <section class="plant-board">
       <header class="section-header">
         <div>
           <strong>Lưới trạng thái máy</strong>
@@ -204,6 +239,8 @@
           </div>
         </article>
       </div>
+        </section>
+      </section>
     </section>
   </main>
 </template>
@@ -215,7 +252,6 @@ import { getLocations } from '@/api/locations.api'
 import { getStatuses } from '@/api/statuses.api'
 import { getMachineConnectionStatuses } from '@/api/machineConnectionStatuses.api'
 import {
-  getSocket,
   offMachineLogCreated,
   offMachineStatusUpdated,
   onMachineLogCreated,
@@ -232,11 +268,21 @@ const statuses = ref([])
 const connectionStatuses = ref([])
 const recentEvents = ref([])
 const recentEventTotal = ref(0)
-const socketConnected = ref(false)
 const showStable = ref(true)
+const filterDockRef = ref(null)
 const MONITORING_LIMIT = 100
 const RECENT_EVENT_LIMIT = 20
-let realtimeReloadTimer = null
+const FILTER_COLLAPSED_STORAGE_KEY = 'mms_monitor_filter_collapsed'
+const FILTER_WIDTH_STORAGE_KEY = 'mms_monitor_filter_width'
+const FILTER_MIN_WIDTH = 260
+const FILTER_MAX_WIDTH = 380
+const FILTER_DEFAULT_WIDTH = 300
+const FILTER_COLLAPSED_WIDTH = 48
+let filterResizeStarted = false
+let filterResizeLeft = 0
+
+const filterCollapsed = ref(readStoredBoolean(FILTER_COLLAPSED_STORAGE_KEY, false))
+const filterWidth = ref(readStoredNumber(FILTER_WIDTH_STORAGE_KEY, FILTER_DEFAULT_WIDTH))
 
 const urgentMachines = computed(() => sortedByUrgency(machineStore.machines.filter((machine) => laneForMachine(machine) === 'urgent')))
 const watchMachines = computed(() => sortedByUrgency(machineStore.machines.filter((machine) => laneForMachine(machine) === 'watch')))
@@ -271,12 +317,19 @@ const locationGroups = computed(() => {
 })
 
 const displayedTotalText = computed(() => {
+  if (machineStore.loading) {
+    return 'Đang tải dữ liệu máy...'
+  }
+
   const loaded = machineStore.machines.length
   const total = Number(machineStore.pagination.total) || loaded
 
   return loaded === total ? `${total} máy trong ca hiện tại` : `Đang hiển thị ${loaded}/${total} máy`
 })
 const recentEventCountText = computed(() => `${recentEventTotal.value} sự kiện`)
+const filterPanelStyle = computed(() => ({
+  '--filter-width': `${filterCollapsed.value ? FILTER_COLLAPSED_WIDTH : filterWidth.value}px`
+}))
 
 const gridSummaryText = computed(() => {
   const count = gridMachines.value.length
@@ -291,6 +344,85 @@ const legendStatuses = computed(() => [
   { key: 'stable', label: 'Ổn định', color: statusColor('1') },
   { key: 'no-data', label: 'Chưa dữ liệu', color: '#6B7280' }
 ])
+
+function readStoredBoolean(key, fallback) {
+  try {
+    const value = window.sessionStorage.getItem(key)
+
+    if (value === null) return fallback
+
+    return value === 'true'
+  } catch {
+    return fallback
+  }
+}
+
+function readStoredNumber(key, fallback) {
+  try {
+    const value = Number(window.sessionStorage.getItem(key))
+
+    if (Number.isFinite(value)) {
+      return clamp(value, FILTER_MIN_WIDTH, FILTER_MAX_WIDTH)
+    }
+
+    return fallback
+  } catch {
+    return fallback
+  }
+}
+
+function storeFilterPreference(key, value) {
+  try {
+    window.sessionStorage.setItem(key, String(value))
+  } catch {
+    // Không cần chặn màn hình nếu browser tắt sessionStorage.
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function toggleFilterPanel() {
+  filterCollapsed.value = !filterCollapsed.value
+  storeFilterPreference(FILTER_COLLAPSED_STORAGE_KEY, filterCollapsed.value)
+}
+
+function startFilterResize(event) {
+  if (filterCollapsed.value || !filterDockRef.value) {
+    return
+  }
+
+  const rect = filterDockRef.value.getBoundingClientRect()
+  filterResizeStarted = true
+  filterResizeLeft = rect.left
+  event.preventDefault()
+  window.addEventListener('pointermove', resizeFilterPanel)
+  window.addEventListener('pointerup', stopFilterResize)
+  window.addEventListener('pointercancel', stopFilterResize)
+  document.body.classList.add('is-monitor-filter-resizing')
+}
+
+function resizeFilterPanel(event) {
+  if (!filterResizeStarted) {
+    return
+  }
+
+  filterWidth.value = clamp(event.clientX - filterResizeLeft, FILTER_MIN_WIDTH, FILTER_MAX_WIDTH)
+}
+
+function stopFilterResize() {
+  if (!filterResizeStarted) {
+    return
+  }
+
+  filterResizeStarted = false
+  storeFilterPreference(FILTER_WIDTH_STORAGE_KEY, filterWidth.value)
+  window.removeEventListener('pointermove', resizeFilterPanel)
+  window.removeEventListener('pointerup', stopFilterResize)
+  window.removeEventListener('pointercancel', stopFilterResize)
+  document.body.classList.remove('is-monitor-filter-resizing')
+}
 
 // Xếp máy vào 1 trong 3 nhóm hiển thị: urgent (Lỗi/chưa dữ liệu) > watch
 // (Tạm dừng) > stable, dùng để sắp xếp và tô màu ưu tiên trên màn hình.
@@ -307,22 +439,19 @@ function isNoDataMachine(machine) {
   return isNoDataStatusId(machine.currentStatus?.status_id)
 }
 
-function statusPriority(machine) {
+function machineStatusRank(machine) {
   const statusId = String(machine.currentStatus?.status_id ?? '')
 
-  if (isNoDataStatusId(statusId)) return 0
-  if (statusId === '3') return 1
-  if (statusId === '2') return 2
+  if (statusId === '3') return 0
+  if (statusId === '2') return 1
+  if (statusId === '1') return 2
+  if (isNoDataStatusId(statusId)) return 3
 
-  return 3
+  return 4
 }
 
 function sortedByUrgency(machines) {
   return [...machines].sort((left, right) => {
-    const priorityDiff = statusPriority(left) - statusPriority(right)
-
-    if (priorityDiff !== 0) return priorityDiff
-
     return compareMachinePosition(left, right)
   })
 }
@@ -332,24 +461,35 @@ function sortedForGrid(machines) {
 }
 
 function compareMachinePosition(left, right) {
-  const locationDiff = compareNaturalText(locationName(left), locationName(right))
-
-  if (locationDiff !== 0) {
-    return locationDiff
-  }
-
   const connectionDiff = machineConnectionRank(left) - machineConnectionRank(right)
 
   if (connectionDiff !== 0) {
     return connectionDiff
   }
 
+  const statusDiff = machineStatusRank(left) - machineStatusRank(right)
+
+  if (statusDiff !== 0) {
+    return statusDiff
+  }
+
+  const locationDiff = compareNaturalText(locationName(left), locationName(right))
+
+  if (locationDiff !== 0) {
+    return locationDiff
+  }
+
   return compareNaturalText(left.code, right.code)
 }
 
-// Máy offline xếp trước máy online trong cùng khu vực.
+// Thứ tự ưu tiên: Offline -> Online -> Lỗi -> Tạm dừng -> Đang chạy -> Không có dữ liệu.
 function machineConnectionRank(machine) {
-  return machineConnectionName(machine) === 'Online' ? 1 : 0
+  const connectionName = String(machineConnectionName(machine) || '').toLowerCase()
+
+  if (connectionName === 'offline') return 0
+  if (connectionName === 'online') return 1
+
+  return 2
 }
 
 function compareNaturalText(left, right) {
@@ -447,7 +587,7 @@ function syncRecentEventsFromMachines() {
 function addRecentEvent(event, fallbackText) {
   const payload = eventPayload(event)
   const statusColor =
-    eventField(event, payload, ['colorCode', 'color_code', 'statusColor', 'status_color', 'color']) || '#0f62b4'
+    eventField(event, payload, ['colorCode', 'color_code', 'statusColor', 'status_color', 'color']) || 'var(--primary-color)'
   const statusNameText = eventField(event, payload, ['statusName', 'status_name']) || fallbackText
   const machineCode = eventField(event, payload, ['machineCode', 'machine_code']) || payload?.machine?.code || '-'
   const machineFromStore = machineStore.machines.find((machine) => String(machine.code) === String(machineCode))
@@ -475,52 +615,60 @@ function addRecentEvent(event, fallbackText) {
   }
 }
 
-// Debounce 800ms: nhiều event realtime dồn dập chỉ cần gọi lại API 1 lần.
-function scheduleRealtimeReload() {
-  if (realtimeReloadTimer) {
-    clearTimeout(realtimeReloadTimer)
+function handleRealtimeStatus(event) {
+  const updatedVisibleMachine = machineStore.updateMachineStatusRealtime(event)
+
+  if (!updatedVisibleMachine) {
+    return
   }
 
-  realtimeReloadTimer = setTimeout(() => {
-    realtimeReloadTimer = null
-    loadMonitoringMachines()
-  }, 800)
-}
-
-function handleRealtimeStatus(event) {
-  machineStore.updateMachineStatusRealtime(event)
   addRecentEvent(event, 'Đổi trạng thái')
-  scheduleRealtimeReload()
 }
 
 function handleRealtimeLog(event) {
-  machineStore.updateMachineLogRealtime(event)
+  const updatedVisibleMachine = machineStore.updateMachineLogRealtime(event)
+
+  if (!updatedVisibleMachine) {
+    return
+  }
+
   addRecentEvent(event, 'Tín hiệu mới')
-  scheduleRealtimeReload()
 }
 
-function bindSocketState() {
-  const socket = getSocket()
-  socketConnected.value = socket.connected
-  socket.on('connect', () => {
-    socketConnected.value = true
-  })
-  socket.on('disconnect', () => {
-    socketConnected.value = false
-  })
+function clearMonitoringSnapshot() {
+  machineStore.machines = []
+  machineStore.pagination = {
+    ...machineStore.pagination,
+    total: 0,
+    totalPages: 0
+  }
+  recentEvents.value = []
+  recentEventTotal.value = 0
 }
 
-async function reload() {
+async function reload({ clearCurrent = false } = {}) {
   machineStore.pagination.page = 1
   machineStore.filters.status_id = ''
   machineStore.filters.noData = ''
   machineStore.filters.abnormal = ''
+
+  if (clearCurrent) {
+    clearMonitoringSnapshot()
+  }
+
   await loadMonitoringMachines()
 }
 
+async function applyMonitoringFilterChange() {
+  await reload({ clearCurrent: true })
+}
+
 async function loadMonitoringMachines() {
-  await machineStore.fetchMachines({ limit: MONITORING_LIMIT })
-  syncRecentEventsFromMachines()
+  const loaded = await machineStore.fetchMachines({ limit: MONITORING_LIMIT })
+
+  if (loaded) {
+    syncRecentEventsFromMachines()
+  }
 }
 
 function statusMeta(statusId) {
@@ -581,14 +729,14 @@ function tileFrameColor(machine) {
 }
 
 function tileBackgroundColor(machine) {
-  if (isNoDataMachine(machine)) return '#f8fafc'
+  if (isNoDataMachine(machine)) return 'var(--surface-muted)'
 
   const lane = laneForMachine(machine)
 
-  if (lane === 'urgent') return '#fff7f7'
-  if (lane === 'watch') return '#fffbeb'
+  if (lane === 'urgent') return 'color-mix(in srgb, #dc2626 8%, var(--surface-bg))'
+  if (lane === 'watch') return 'color-mix(in srgb, #d97706 10%, var(--surface-bg))'
 
-  return '#f0fdf4'
+  return 'color-mix(in srgb, #16a34a 8%, var(--surface-bg))'
 }
 
 function statusLabel(machine) {
@@ -614,11 +762,25 @@ function gridTileText(machine) {
     return compactStatusLabel(machine)
   }
 
-  const cycleTime = gridTileCycleTime(machine)
+  const cycleTime = formatCycleTimeSeconds(gridTileCycleTime(machine))
 
   return `Cycletime: ${cycleTime || '-'}`
 }
+function formatCycleTimeSeconds(value) {
+  if (value === undefined || value === null || value === '') {
+    return '-'
+  }
 
+  const milliseconds = Number(value)
+
+  if (!Number.isFinite(milliseconds)) {
+    return '-'
+  }
+
+  const seconds = milliseconds / 1000
+
+  return `${seconds.toFixed(2)}s`
+}
 function compactCycleTime(machine) {
   const value = cycleTimeValue(machine)
 
@@ -663,7 +825,7 @@ function machineTooltip(machine) {
 async function resetMonitoringFilters() {
   machineStore.filters.keyword = ''
   machineStore.filters.location_id = ''
-  await reload()
+  await reload({ clearCurrent: true })
 }
 
 function isHighlighted(machine) {
@@ -702,16 +864,12 @@ onMounted(async () => {
   }
 
   await reload()
-  bindSocketState()
   onMachineLogCreated(handleRealtimeLog)
   onMachineStatusUpdated(handleRealtimeStatus)
 })
 
 onUnmounted(() => {
-  if (realtimeReloadTimer) {
-    clearTimeout(realtimeReloadTimer)
-  }
-
+  stopFilterResize()
   offMachineLogCreated(handleRealtimeLog)
   offMachineStatusUpdated(handleRealtimeStatus)
 })
@@ -719,25 +877,107 @@ onUnmounted(() => {
 
 <style scoped>
 .monitor-page {
-  display: grid;
-  align-content: start;
-  gap: 14px;
   min-height: 100vh;
-  padding: 24px 28px;
+  padding: 16px;
   background: var(--app-bg);
   color: var(--text-color);
 }
 
-.page-header,
-.control-panel,
+.monitor-shell {
+  --filter-width: 300px;
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--filter-width) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 14px;
+}
+
+.monitor-content {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 14px;
+}
+
+.filter-dock {
+  position: relative;
+  align-self: stretch;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-bg);
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--text-color) 7%, transparent);
+}
+
+.filter-dock.is-collapsed {
+  box-shadow: none;
+}
+
+.filter-dock.is-collapsed .filter-dock-header {
+  justify-content: center;
+  min-height: 54px;
+  padding: 8px;
+}
+
+.filter-dock.is-collapsed .dock-toggle.icon-button {
+  width: 32px;
+  height: 32px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.filter-dock.is-collapsed .dock-toggle.icon-button:hover {
+  border-color: var(--border-color);
+  background: var(--surface-muted);
+}
+
+.filter-rail-label {
+  position: absolute;
+  top: 82px;
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 34px;
+  border-radius: 8px;
+  padding: 8px 0;
+  background: transparent;
+  color: var(--muted-color);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+}
+
+.filter-rail-label::before {
+  content: '';
+  width: 18px;
+  height: 2px;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  background: var(--primary-color);
+  opacity: 0.75;
+}
+
+.filter-rail-label span {
+  display: block;
+}
+
+.filter-dock-header,
 .status-strip,
 .section-header,
-.stable-toggle {
+.stable-toggle,
+.search-control {
   display: flex;
   align-items: center;
 }
 
-.page-header,
+.filter-dock-header,
 .section-header {
   justify-content: space-between;
   gap: 14px;
@@ -755,25 +995,62 @@ h1 {
   line-height: 1.2;
 }
 
-.page-header p {
-  display: flex;
-  gap: 10px;
+.filter-dock-header {
+  min-height: 68px;
+  border-bottom: 1px solid var(--border-color);
+  padding: 11px 12px;
+}
+
+.filter-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.filter-title h1,
+.filter-title p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-title p {
   margin-top: 4px;
   color: var(--muted-color);
   font-size: 14px;
 }
 
-.online {
-  color: #16a34a;
-  font-weight: 800;
+.dock-toggle.icon-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0;
+  background: var(--surface-muted);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-.offline {
-  color: #dc2626;
-  font-weight: 800;
+.dock-toggle.icon-button:hover {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-bg));
+  color: var(--primary-color);
 }
 
-.reload-button,
+.filter-dock-body {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
 .secondary-button {
   display: inline-flex;
   align-items: center;
@@ -789,43 +1066,73 @@ h1 {
   font-weight: 800;
 }
 
+.icon-button {
+  width: 38px;
+  padding: 0;
+}
+
 .secondary-button {
   border-color: var(--border-color);
   background: var(--surface-bg);
   color: var(--text-color);
 }
 
-.control-panel {
-  gap: 10px;
+.filter-field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted-color);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.search-control {
+  height: 38px;
+  gap: 9px;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 10px;
+  border-radius: 6px;
+  padding: 0 12px;
   background: var(--surface-bg);
 }
 
-.control-panel input,
-.control-panel select {
+.search-control i {
+  color: var(--muted-color);
+  font-size: 13px;
+}
+
+.filter-field input,
+.filter-field select {
   height: 38px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0 12px;
 }
 
-.control-panel input {
+.search-control input {
   flex: 1;
-  min-width: 220px;
+  min-width: 0;
+  height: 100%;
+  border: 0 !important;
+  padding: 0;
+  background: transparent !important;
 }
 
-.control-panel select {
-  min-width: 170px;
+.search-control input:focus {
+  outline: 0;
+}
+
+.filter-field select {
+  width: 100%;
+  background: var(--surface-bg);
+  color: var(--text-color);
 }
 
 .stable-toggle {
+  justify-content: flex-start;
   gap: 8px;
   height: 38px;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 0 10px;
+  padding: 0 12px 0 8px;
   background: var(--surface-muted);
   color: var(--text-color);
   font-weight: 800;
@@ -833,8 +1140,74 @@ h1 {
 }
 
 .stable-toggle input {
-  width: 16px;
-  height: 16px;
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toggle-track {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted-color) 30%, var(--surface-muted));
+  transition: 0.2s ease;
+}
+
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--surface-bg);
+  transition: 0.2s ease;
+}
+
+.stable-toggle input:checked + .toggle-track {
+  background: var(--primary-color);
+}
+
+.stable-toggle input:checked + .toggle-track::after {
+  transform: translateX(16px);
+}
+
+.reset-button {
+  width: 100%;
+}
+
+.filter-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  z-index: 2;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.filter-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 4px;
+  width: 2px;
+  height: calc(100% - 24px);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted-color) 24%, transparent);
+  transition: background 0.2s ease;
+}
+
+.filter-resize-handle:hover::after {
+  background: var(--primary-color);
+}
+
+:global(body.is-monitor-filter-resizing) {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .status-strip {
@@ -864,13 +1237,13 @@ h1 {
 }
 
 .strip-item.is-total {
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  border-color: color-mix(in srgb, var(--primary-color) 32%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-bg));
 }
 
 .strip-item.is-urgent {
-  border-color: #fecaca;
-  background: #fff1f2;
+  border-color: color-mix(in srgb, #dc2626 35%, var(--border-color));
+  background: color-mix(in srgb, #dc2626 8%, var(--surface-bg));
 }
 
 .strip-item.is-urgent strong {
@@ -878,8 +1251,8 @@ h1 {
 }
 
 .strip-item.is-watch {
-  border-color: #fde68a;
-  background: #fffbeb;
+  border-color: color-mix(in srgb, #d97706 36%, var(--border-color));
+  background: color-mix(in srgb, #d97706 10%, var(--surface-bg));
 }
 
 .strip-item.is-watch strong {
@@ -887,8 +1260,8 @@ h1 {
 }
 
 .strip-item.is-stable {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
+  border-color: color-mix(in srgb, #16a34a 32%, var(--border-color));
+  background: color-mix(in srgb, #16a34a 8%, var(--surface-bg));
 }
 
 .strip-item.is-stable strong {
@@ -965,7 +1338,7 @@ h1 {
   display: grid;
   gap: 9px;
   border: 1px solid var(--frame-color, var(--border-color));
-  border-left: 5px solid var(--frame-color, #94a3b8);
+  border-left: 5px solid var(--frame-color, var(--border-color));
   border-radius: 8px;
   padding: 10px 11px;
   background: var(--card-bg-color, var(--surface-bg));
@@ -974,7 +1347,7 @@ h1 {
 
 .priority-card:hover,
 .machine-tile:hover {
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--text-color) 10%, transparent);
 }
 
 .priority-card:hover {
@@ -983,7 +1356,7 @@ h1 {
 
 .priority-card.is-highlighted,
 .machine-tile.is-highlighted {
-  box-shadow: 0 0 0 3px rgba(15, 98, 180, 0.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 18%, transparent);
 }
 
 .priority-card header {
@@ -1251,7 +1624,7 @@ h1 {
 }
 
 .location-card > header small.is-warning {
-  color: #dc2626;
+  color: var(--error-text);
   font-weight: 800;
 }
 
@@ -1274,7 +1647,7 @@ h1 {
   height: auto;
   min-height: 64px;
   border: 1px solid var(--tile-frame-color, var(--border-color));
-  border-top: 4px solid var(--tile-frame-color, #94a3b8);
+  border-top: 4px solid var(--tile-frame-color, var(--border-color));
   border-radius: 8px;
   padding: 7px 9px;
   background: var(--tile-bg-color, var(--surface-bg));
@@ -1284,7 +1657,7 @@ h1 {
 }
 
 .machine-tile.is-priority {
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-color) 5%, transparent);
 }
 
 .tile-top {
@@ -1367,17 +1740,27 @@ h1 {
     padding: 18px;
   }
 
-  .page-header,
-  .control-panel,
+  .monitor-shell {
+    grid-template-columns: var(--filter-width) minmax(0, 1fr);
+  }
+
+  .filter-dock {
+    min-height: auto;
+  }
+
+  .filter-resize-handle {
+    display: none;
+  }
+
   .status-strip,
   .section-header {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .control-panel input,
-  .control-panel select {
-    min-width: 0;
+  .stable-toggle,
+  .reset-button {
+    justify-content: center;
     width: 100%;
   }
 

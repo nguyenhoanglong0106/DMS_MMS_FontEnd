@@ -1,11 +1,19 @@
-﻿import apiClient from './axios'
+import apiClient from './axios'
+import { createCachedRequest } from './cachedRequest'
 
-// Gọi API lấy danh sách trạng thái máy.
-export function getStatuses() {
-  return apiClient.get('/statuses')
+const statusesRequest = createCachedRequest(() => apiClient.get('/statuses'))
+
+export function getStatuses(options) {
+  return statusesRequest.get(options)
 }
 
-// Gọi API cập nhật trạng thái.
-export function updateStatus(id, payload) {
-  return apiClient.patch(`/statuses/${id}`, payload)
+export function clearStatusesCache() {
+  statusesRequest.clear()
+}
+
+export async function updateStatus(id, payload) {
+  const response = await apiClient.patch(`/statuses/${id}`, payload)
+  clearStatusesCache()
+
+  return response
 }

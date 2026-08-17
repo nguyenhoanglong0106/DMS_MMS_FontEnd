@@ -1,35 +1,52 @@
 <template>
   <main class="timeline-page">
-    <section class="filters">
-      <label>
-        Khu vực
-        <select v-model="selectedLocationId" @change="handleLocationFilterChange">
-          <option value="">Tất cả khu vực</option>
-          <option v-for="location in locations" :key="location.location_id" :value="location.location_id">
-            {{ location.location_name }}
-          </option>
-        </select>
-      </label>
-      <label>
-        Máy
-        <select v-model="selectedMachineId" @change="handleTimelineFilterChange">
-          <option value="">Chọn máy</option>
-          <option v-for="machine in machines" :key="machine._id" :value="machine._id">
-            {{ machine.code }} - {{ machine.name }}
-          </option>
-        </select>
-      </label>
-      <label>
-        Từ ngày
-        <input v-model="fromDate" type="date" @change="handleTimelineFilterChange" />
-      </label>
-      <label>
-        Đến ngày
-        <input v-model="toDate" type="date" @change="handleTimelineFilterChange" />
-      </label>
-    </section>
+    <FilterRailLayout title="Timeline" :subtitle="timelineSubtitle" storage-key="machine-status-timeline">
+      <template #dock>
+        <label class="dock-field">
+          <span>Khu vực</span>
+          <select v-model="selectedLocationId" @change="handleLocationFilterChange">
+            <option value="">Tất cả khu vực</option>
+            <option v-for="location in locations" :key="location.location_id" :value="location.location_id">
+              {{ location.location_name }}
+            </option>
+          </select>
+        </label>
+        <label class="dock-field">
+          <span>Máy</span>
+          <select v-model="selectedMachineId" @change="handleTimelineFilterChange">
+            <option value="">Chọn máy</option>
+            <option v-for="machine in machines" :key="machine._id" :value="machine._id">
+              {{ machine.code }} - {{ machine.name }}
+            </option>
+          </select>
+        </label>
+        <label class="dock-field">
+          <span>Từ ngày</span>
+          <input v-model="fromDate" type="date" @change="handleTimelineFilterChange" />
+        </label>
+        <label class="dock-field">
+          <span>Đến ngày</span>
+          <input v-model="toDate" type="date" @change="handleTimelineFilterChange" />
+        </label>
 
-    <p v-if="error" class="error">{{ error }}</p>
+        <div class="dock-section">
+          <strong>Khung nhìn</strong>
+          <span>{{ viewportLabel }}</span>
+          <div class="dock-icon-actions">
+            <button type="button" title="Thu nhỏ" @click="zoomOut">
+              <i class="fas fa-search-minus" aria-hidden="true"></i>
+            </button>
+            <button type="button" title="Phóng to" @click="zoomIn">
+              <i class="fas fa-search-plus" aria-hidden="true"></i>
+            </button>
+            <button type="button" title="Reload" @click="resetViewport">
+              <i class="fas fa-sync-alt" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <p v-if="error" class="error">{{ error }}</p>
 
     <section class="timeline-panel">
       <div class="timeline-meta">
@@ -41,24 +58,6 @@
           <i class="fas fa-clock" aria-hidden="true"></i>
           Ghi nhận
           <strong>{{ formatTimelineEndpoint(timelineFillEnd) }}</strong>
-        </span>
-      </div>
-
-      <div class="timeline-toolbar">
-        <div class="zoom-actions">
-          <button type="button" title="Thu nhỏ" @click="zoomOut">
-            <i class="fas fa-search-minus" aria-hidden="true"></i>
-          </button>
-          <button type="button" title="Phóng to" @click="zoomIn">
-            <i class="fas fa-search-plus" aria-hidden="true"></i>
-          </button>
-          <button type="button" title="Reload" @click="resetViewport">
-            <i class="fas fa-sync-alt" aria-hidden="true"></i>
-          </button>
-        </div>
-        <span class="timeline-window">
-          <i class="fas fa-arrows-alt-h" aria-hidden="true"></i>
-          {{ viewportLabel }}
         </span>
       </div>
 
@@ -152,6 +151,7 @@
         </tbody>
       </table>
     </section>
+    </FilterRailLayout>
   </main>
 </template>
 
@@ -159,6 +159,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getLocations } from '@/api/locations.api'
 import { getMachines, getMachineStatusTimeline } from '@/api/machines.api'
+import FilterRailLayout from '@/components/layout/FilterRailLayout.vue'
 import { isNoDataStatusId } from '@/constants/machine-status'
 import {
   offMachineLogCreated,
@@ -200,6 +201,15 @@ let clockTimer = null
 let dragState = null
 
 const selectedMachine = computed(() => machines.value.find((machine) => machine._id === selectedMachineId.value) || null)
+const timelineSubtitle = computed(() => {
+  if (loading.value) {
+    return 'Đang tải timeline...'
+  }
+
+  return selectedMachine.value
+    ? `${selectedMachine.value.code} - ${selectedMachine.value.name}`
+    : 'Chọn máy và khoảng ngày'
+})
 const timelineFillEnd = computed(() => {
   const latestSegmentEnd = buildDisplaySegments().reduce((latest, segment) => {
     const segmentEnd = parseTime(segment.to)
@@ -981,13 +991,10 @@ onUnmounted(() => {
 
 <style scoped>
 .timeline-page {
-  display: grid;
-  align-content: start;
-  gap: 10px;
   min-height: 100vh;
-  padding: 14px 18px;
-  background: #f8fafc;
-  color: #111827;
+  padding: 16px;
+  background: var(--app-bg);
+  color: var(--text-color);
 }
 
 .page-header,
@@ -995,9 +1002,9 @@ onUnmounted(() => {
 .timeline-panel,
 .event-list,
 .summary-item {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface-bg);
 }
 
 .page-header {
@@ -1026,15 +1033,17 @@ h2 {
 .timeline-meta span,
 .summary-item span,
 dt {
-  color: #6b7280;
+  color: var(--muted-color);
 }
 
 .filters select,
 .filters input {
   height: 36px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0 12px;
+  background: var(--surface-bg);
+  color: var(--text-color);
 }
 
 .filters {
@@ -1079,11 +1088,11 @@ label {
   align-items: center;
   gap: 6px;
   min-height: 30px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 999px;
   padding: 0 10px;
-  background: #f8fafc;
-  color: #475569;
+  background: var(--surface-muted);
+  color: var(--muted-color);
   font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
@@ -1091,19 +1100,19 @@ label {
 
 .timeline-pill i,
 .timeline-window i {
-  color: #0f62b4;
+  color: var(--primary-color);
   font-size: 12px;
 }
 
 .timeline-pill strong {
-  color: #0f172a;
+  color: var(--text-color);
   font-size: 13px;
 }
 
 .timeline-window {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #0f172a;
+  border-color: color-mix(in srgb, var(--primary-color) 32%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-bg));
+  color: var(--text-color);
 }
 
 .timeline-toolbar {
@@ -1112,7 +1121,7 @@ label {
   justify-content: space-between;
   gap: 12px;
   min-height: 34px;
-  color: #475569;
+  color: var(--muted-color);
   font-size: 13px;
   font-weight: 700;
 }
@@ -1130,25 +1139,25 @@ label {
   justify-content: center;
   min-width: 34px;
   height: 30px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0 9px;
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--surface-bg);
+  color: var(--text-color);
   cursor: pointer;
   font-size: 12px;
   font-weight: 800;
 }
 
 .zoom-actions button:hover {
-  border-color: #0f62b4;
-  color: #0f62b4;
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 .timeline-scale {
   position: relative;
   height: 16px;
-  color: #6b7280;
+  color: var(--muted-color);
   font-size: 12px;
 }
 
@@ -1172,9 +1181,9 @@ label {
   width: 100%;
   height: 44px;
   overflow: hidden;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: #f8fafc;
+  background: var(--surface-muted);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -1191,8 +1200,8 @@ label {
   z-index: 3;
   width: 2px;
   border-radius: 999px;
-  background: #0f62b4;
-  box-shadow: 0 0 0 3px rgba(15, 98, 180, 0.16);
+  background: var(--primary-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 18%, transparent);
   pointer-events: none;
   transform: translateX(-50%);
 }
@@ -1203,9 +1212,9 @@ label {
   left: 50%;
   width: 8px;
   height: 8px;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--surface-bg);
   border-radius: 999px;
-  background: #0f62b4;
+  background: var(--primary-color);
   content: '';
   transform: translateX(-50%);
 }
@@ -1285,7 +1294,7 @@ label {
 }
 
 .event-list-header span {
-  color: #64748b;
+  color: var(--muted-color);
   font-size: 13px;
 }
 
@@ -1296,11 +1305,11 @@ label {
 
 .pagination-controls button {
   height: 30px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0 10px;
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--surface-bg);
+  color: var(--text-color);
   cursor: pointer;
   font-weight: 700;
 }
@@ -1317,14 +1326,14 @@ table {
 
 th,
 td {
-  border-bottom: 1px solid #edf2f7;
+  border-bottom: 1px solid var(--border-color);
   padding: 7px 10px;
   text-align: left;
   line-height: 1.25;
 }
 
 th {
-  background: #f8fafc;
+  background: var(--table-header-bg);
 }
 
 td:first-child,
@@ -1350,7 +1359,7 @@ td:first-child {
 
 .empty,
 .error {
-  color: #991b1b;
+  color: var(--error-text);
 }
 
 @media (max-width: 900px) {

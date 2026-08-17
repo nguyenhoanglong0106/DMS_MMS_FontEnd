@@ -2,17 +2,7 @@
   <main class="home-page">
     <header class="page-header">
       <div>
-        <h1>Trang Chủ</h1>
-        <p>Tổng quan trạng thái máy theo nhà máy.</p>
-      </div>
-      <div class="header-actions">
-        <span :class="socketConnected ? 'socket-online' : 'socket-offline'">
-          {{ socketConnected ? 'Socket.IO đã kết nối' : 'Socket.IO mất kết nối' }}
-        </span>
-        <button type="button" @click="loadDashboard">
-          <i class="fas fa-sync-alt" aria-hidden="true"></i>
-          <span>Reload</span>
-        </button>
+               <p>Tổng quan trạng thái máy theo nhà máy.</p>
       </div>
     </header>
 
@@ -126,12 +116,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { getBackendHealth, getLocationOverview } from '@/api/machines.api'
 import { getMachineConnectionStatuses } from '@/api/machineConnectionStatuses.api'
 import { getStatuses } from '@/api/statuses.api'
 import {
-  getSocket,
   offMachineConnectionUpdated,
   offMachineLogCreated,
   offMachineStatusUpdated,
@@ -155,8 +144,8 @@ const connectionStatuses = ref([])
 const connectionSync = ref(emptyConnectionSync())
 const loading = ref(false)
 const error = ref('')
-const socketConnected = ref(false)
 let refreshTimer = null
+let realtimeHandlersBound = false
 
 const hasDashboardData = computed(() => locationOverview.value.length > 0 || totals.value.total > 0)
 const overviewText = computed(() => `${totals.value.locationCount} nhà máy - ${totals.value.total} máy`)
@@ -286,36 +275,16 @@ function machineConnectionColor(machine) {
   return status.color_code || status.color || connectionColor(machine.connect_id || '1')
 }
 
-// Đổi mã màu hex sang {r,g,b} để dùng trong rgba() (làm nền mờ cho kpi-card).
-function hexToRgb(hexColor) {
-  let hex = String(hexColor || '').replace('#', '')
-
-  if (/^[0-9A-Fa-f]{3}$/.test(hex)) {
-    hex = hex
-      .split('')
-      .map((item) => `${item}${item}`)
-      .join('')
-  }
-
-  if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
-    return null
-  }
-
-  return {
-    red: parseInt(hex.slice(0, 2), 16),
-    green: parseInt(hex.slice(2, 4), 16),
-    blue: parseInt(hex.slice(4, 6), 16)
-  }
-}
-
+// Build a theme-aware translucent status background for KPI cards.
 function translucent(hexColor, alpha) {
-  const rgb = hexToRgb(hexColor)
+  const color = String(hexColor || '').trim()
+  const percent = Math.round(Number(alpha) * 100)
 
-  if (!rgb) {
-    return 'rgba(100, 116, 139, 0.12)'
+  if (!/^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(color) || !Number.isFinite(percent)) {
+    return 'color-mix(in srgb, var(--muted-color) 12%, var(--surface-bg))'
   }
 
-  return `rgba(${rgb.red}, ${rgb.green}, ${rgb.blue}, ${alpha})`
+  return `color-mix(in srgb, ${color} ${percent}%, var(--surface-bg))`
 }
 
 // Chỉ lấy trạng thái có máy (count > 0) để vẽ thanh tỉ lệ area-status-bar.
@@ -399,13 +368,15 @@ async function loadDashboard() {
     }
 
     error.value = ''
-    const healthResponse = await getBackendHealth()
+    const [healthResponse, response] = await Promise.all([
+      getBackendHealth(),
+      getLocationOverview()
+    ])
     const mqtt = healthResponse.data?.mqtt || null
     connectionSync.value = normalizeConnectionSync({
       connected: isMqttConnectedStatus(mqtt?.status),
       mqtt
     })
-    const response = await getLocationOverview()
     locationOverview.value = normalizeLocationOverview(response.data || [])
     totals.value = response.totals || emptyTotals()
   } catch (err) {
@@ -439,7 +410,7 @@ function normalizeLocationOverview(areas) {
   return [...areas]
     .map((area) => ({
       ...area,
-      machines: [...(area.machines || [])].sort(compareMachineByConnectionThenCode)
+      machines: [...(area.machines || [])].sort(compareMachineByConnectionStatusThenCode)
     }))
     .sort(compareAreaByName)
 }
@@ -458,47 +429,81 @@ function compareMachineByCode(left, right) {
   })
 }
 
-// Máy offline hiển thị trước, máy online hiển thị sau; cùng nhóm thì sắp theo mã máy.
-function compareMachineByConnectionThenCode(left, right) {
-  const leftRank = machineIsOnline(left) ? 1 : 0
-  const rightRank = machineIsOnline(right) ? 1 : 0
+function machineConnectionRank(machine) {
+  const connectionName = String(machineConnectionName(machine) || '').toLowerCase()
 
-  if (leftRank !== rightRank) {
-    return leftRank - rightRank
+  if (connectionName === 'offline') return 0
+  if (connectionName === 'online') return 1
+
+  return 2
+}
+
+function machineStatusRank(machine) {
+  const statusId = String(machine.currentStatus?.status_id ?? '').trim()
+
+  if (statusId === '3') return 0
+  if (statusId === '2') return 1
+  if (statusId === '1') return 2
+  if (statusId === '' || statusId === NO_DATA_STATUS_CARD.statusId) return 3
+
+  return 4
+}
+
+// Thứ tự ưu tiên trong từng nhà máy:
+// Offline -> Online; trong mỗi nhóm kết nối: Lỗi -> Tạm dừng -> Đang chạy -> Không có dữ liệu.
+function compareMachineByConnectionStatusThenCode(left, right) {
+  const connectionDiff = machineConnectionRank(left) - machineConnectionRank(right)
+
+  if (connectionDiff !== 0) {
+    return connectionDiff
+  }
+
+  const statusDiff = machineStatusRank(left) - machineStatusRank(right)
+
+  if (statusDiff !== 0) {
+    return statusDiff
   }
 
   return compareMachineByCode(left, right)
 }
 
-function bindSocketState() {
-  const socket = getSocket()
-  socketConnected.value = socket.connected
-  socket.on('connect', () => {
-    socketConnected.value = true
-  })
-  socket.on('disconnect', () => {
-    socketConnected.value = false
-  })
-}
+function bindRealtimeHandlers() {
+  if (realtimeHandlersBound) {
+    return
+  }
 
-onMounted(async () => {
-  await Promise.all([loadStatuses(), loadConnectionStatuses()])
-  await loadDashboard()
-  bindSocketState()
   onMachineLogCreated(scheduleDashboardReload)
   onMachineStatusUpdated(scheduleDashboardReload)
   onMachineConnectionUpdated(scheduleDashboardReload)
-})
+  realtimeHandlersBound = true
+}
 
-onUnmounted(() => {
+function unbindRealtimeHandlers() {
   if (refreshTimer) {
     clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+
+  if (!realtimeHandlersBound) {
+    return
   }
 
   offMachineLogCreated(scheduleDashboardReload)
   offMachineStatusUpdated(scheduleDashboardReload)
   offMachineConnectionUpdated(scheduleDashboardReload)
+  realtimeHandlersBound = false
+}
+
+onMounted(async () => {
+  await Promise.all([loadStatuses(), loadConnectionStatuses()])
+  await loadDashboard()
+  bindRealtimeHandlers()
 })
+
+onActivated(bindRealtimeHandlers)
+onDeactivated(unbindRealtimeHandlers)
+
+onUnmounted(unbindRealtimeHandlers)
 </script>
 
 <style scoped>
@@ -513,7 +518,6 @@ onUnmounted(() => {
 }
 
 .page-header,
-.header-actions,
 .panel-header,
 .area-card header,
 .area-count {
@@ -557,26 +561,6 @@ h3 {
   color: var(--muted-color);
 }
 
-.header-actions {
-  gap: 10px;
-}
-
-.header-actions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 38px;
-  border: 1px solid var(--primary-color);
-  border-radius: 8px;
-  padding: 0 13px;
-  background: var(--primary-color);
-  color: #ffffff;
-  cursor: pointer;
-  font-weight: 800;
-  text-decoration: none;
-}
-
 .panel-link,
 .detail-link {
   display: inline-flex;
@@ -597,21 +581,7 @@ h3 {
 .panel-link:hover,
 .detail-link:hover {
   border-color: var(--primary-color);
-  background: rgba(15, 98, 180, 0.08);
-}
-
-.socket-online,
-.socket-offline {
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.socket-online {
-  color: #16a34a;
-}
-
-.socket-offline {
-  color: #dc2626;
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-bg));
 }
 
 .kpi-grid {
@@ -633,7 +603,7 @@ h3 {
 }
 
 .kpi-card span {
-  color: #334155;
+  color: var(--muted-color);
   font-weight: 800;
 }
 
@@ -644,13 +614,13 @@ h3 {
 }
 
 .kpi-card.is-total {
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  border-color: color-mix(in srgb, var(--primary-color) 32%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-bg));
 }
 
 .kpi-card.is-location {
-  border-color: #c7d2fe;
-  background: #eef2ff;
+  border-color: color-mix(in srgb, var(--primary-color) 28%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--surface-bg));
 }
 
 .home-panel {
@@ -672,7 +642,7 @@ h3 {
   display: grid;
   gap: 12px;
   border: 1px solid var(--border-color);
-  border-left: 5px solid #94a3b8;
+  border-left: 5px solid var(--border-color);
   border-radius: 8px;
   padding: 13px;
   background: var(--surface-bg);
@@ -691,7 +661,7 @@ h3 {
 }
 
 .area-card.is-muted {
-  border-left-color: #6b7280;
+  border-left-color: var(--muted-color);
 }
 
 .area-online-count,
@@ -711,7 +681,7 @@ h3 {
   height: 12px;
   overflow: hidden;
   border-radius: 999px;
-  background: #e5e7eb;
+  background: var(--surface-muted);
 }
 
 .area-status-bar span {
@@ -786,7 +756,7 @@ h3 {
 }
 
 .machine-chip:hover {
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--text-color) 14%, transparent);
   transform: translateY(-1px);
 }
 
@@ -865,7 +835,6 @@ h3 {
   }
 
   .page-header,
-  .header-actions,
   .panel-header {
     align-items: stretch;
     flex-direction: column;

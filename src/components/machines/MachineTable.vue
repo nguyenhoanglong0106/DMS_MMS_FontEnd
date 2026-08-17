@@ -164,9 +164,9 @@ function connectionColor(machine) {
 <style scoped>
 .table-shell {
   overflow: auto;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface-bg);
   scrollbar-gutter: stable;
 }
 
@@ -209,7 +209,7 @@ table {
 th,
 td {
   padding: 12px;
-  border-bottom: 1px solid #edf2f7;
+  border-bottom: 1px solid var(--border-color);
   text-align: left;
   vertical-align: middle;
 }
@@ -221,8 +221,8 @@ td:not(.actions):not(.connection-cell) {
 }
 
 th {
-  background: #f8fafc;
-  color: #374151;
+  background: var(--table-header-bg);
+  color: var(--text-color);
   font-weight: 800;
 }
 
@@ -232,13 +232,13 @@ th:nth-child(3) {
 }
 
 .code {
-  color: #0f62b4;
+  color: var(--primary-color);
   font-weight: 800;
 }
 
 .empty {
   padding: 34px;
-  color: #6b7280;
+  color: var(--muted-color);
   text-align: center;
 }
 
@@ -264,7 +264,7 @@ th:nth-child(3) {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-color) 8%, transparent);
 }
 
 .connection-name {
@@ -283,10 +283,10 @@ th:nth-child(3) {
 .actions button,
 .actions a,
 .pagination button {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--surface-bg);
+  color: var(--text-color);
   cursor: pointer;
   font-weight: 700;
   text-decoration: none;
@@ -308,21 +308,21 @@ th:nth-child(3) {
 }
 
 .actions .view {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #0f62b4;
+  border-color: color-mix(in srgb, var(--primary-color) 32%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-bg));
+  color: var(--primary-color);
 }
 
 .actions .edit {
-  border-color: #fde68a;
-  background: #fef3c7;
-  color: #a16207;
+  border-color: color-mix(in srgb, #d97706 36%, var(--border-color));
+  background: color-mix(in srgb, #d97706 12%, var(--surface-bg));
+  color: #d97706;
 }
 
 .actions .danger {
-  border-color: #fecaca;
-  background: #fee2e2;
-  color: #dc2626;
+  border-color: color-mix(in srgb, var(--error-text) 36%, var(--border-color));
+  background: var(--error-bg);
+  color: var(--error-text);
 }
 
 .pagination button {
@@ -334,7 +334,7 @@ th:nth-child(3) {
   justify-content: space-between;
   gap: 12px;
   padding: 12px;
-  color: #4b5563;
+  color: var(--muted-color);
 }
 
 .pagination div {

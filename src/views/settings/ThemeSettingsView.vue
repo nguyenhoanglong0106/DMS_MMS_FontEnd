@@ -74,11 +74,12 @@
       </header>
 
       <div class="preview-content">
-        <aside>
-          <strong>MMS</strong>
+        <div class="preview-header">
+          <span>Trang chủ</span>
           <span>Thiết bị máy</span>
-          <span>Setting</span>
-        </aside>
+          <span>Cài đặt</span>
+          <span>Đăng xuất</span>
+        </div>
         <div class="preview-main">
           <div class="preview-toolbar">
             <strong>Giám sát máy</strong>
@@ -399,29 +400,28 @@ input[type='text'] {
 
 .preview-content {
   display: grid;
-  grid-template-columns: 180px 1fr;
   min-height: 230px;
 }
 
-.preview-content aside {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  padding: 18px;
+.preview-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
   background: var(--sidebar-bg-color);
   color: #ffffff;
 }
 
-.preview-content aside strong {
-  margin-bottom: 8px;
-  font-size: 24px;
+.preview-header span {
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: transparent;
+  font-weight: 800;
 }
 
-.preview-content aside span {
-  border-radius: 6px;
-  padding: 10px;
-  background: var(--sidebar-item-hover);
-  font-weight: 800;
+.preview-header span:first-child {
+  box-shadow: inset 0 -3px 0 #ffffff;
 }
 
 .preview-main {

@@ -1,11 +1,19 @@
 import apiClient from './axios'
+import { createCachedRequest } from './cachedRequest'
 
-// Gọi API lấy danh sách trạng thái kết nối (Online/Offline) và màu hiển thị.
-export function getMachineConnectionStatuses() {
-  return apiClient.get('/machine-connection-statuses')
+const machineConnectionStatusesRequest = createCachedRequest(() => apiClient.get('/machine-connection-statuses'))
+
+export function getMachineConnectionStatuses(options) {
+  return machineConnectionStatusesRequest.get(options)
 }
 
-// Gọi API cập nhật tên/màu của 1 trạng thái kết nối.
-export function updateMachineConnectionStatus(id, payload) {
-  return apiClient.patch(`/machine-connection-statuses/${id}`, payload)
+export function clearMachineConnectionStatusesCache() {
+  machineConnectionStatusesRequest.clear()
+}
+
+export async function updateMachineConnectionStatus(id, payload) {
+  const response = await apiClient.patch(`/machine-connection-statuses/${id}`, payload)
+  clearMachineConnectionStatusesCache()
+
+  return response
 }

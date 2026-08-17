@@ -40,7 +40,9 @@
       </label>
       <footer>
         <button type="button" class="secondary" @click="$emit('close')">Hủy</button>
-        <button type="submit" :disabled="saving">{{ saving ? 'Đang lưu...' : 'Lưu' }}</button>
+        <button type="submit" :disabled="saving || machinesLoading">
+          {{ saving ? 'Đang lưu...' : machinesLoading ? 'Đang kiểm tra...' : 'Lưu' }}
+        </button>
       </footer>
     </form>
   </div>
@@ -65,6 +67,10 @@ const props = defineProps({
   locations: {
     type: Array,
     default: () => []
+  },
+  machinesLoading: {
+    type: Boolean,
+    default: false
   },
   saving: {
     type: Boolean,
@@ -140,6 +146,13 @@ function findMachineUsingSignalKey(signalKeys) {
 }
 
 const signalKeyNotice = computed(() => {
+  if (props.machinesLoading) {
+    return {
+      type: 'info',
+      text: 'Đang tải danh sách máy để kiểm tra Signal Keys.'
+    }
+  }
+
   const signalKeys = splitSignalKeys(form.signalKeys)
   const duplicatedSignalKey = findDuplicateSignalKey(signalKeys)
 
@@ -173,6 +186,11 @@ function submitForm() {
     name: form.name.trim(),
     signalKeys: signalKeys.join(', '),
     location_id: form.location_id
+  }
+
+  if (props.machinesLoading) {
+    emit('submit', payload, 'Đang tải danh sách máy để kiểm tra Signal Keys. Vui lòng thử lại sau.')
+    return
   }
 
   // Validate ở frontend để người dùng thấy lỗi ngay, backend vẫn validate lại.
@@ -211,7 +229,7 @@ function submitForm() {
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgba(15, 23, 42, 0.45);
+  background: color-mix(in srgb, #0f172a 45%, transparent);
 }
 
 .modal {
@@ -220,7 +238,8 @@ function submitForm() {
   width: min(520px, 100%);
   border-radius: 8px;
   padding: 18px;
-  background: #ffffff;
+  background: var(--surface-bg);
+  color: var(--text-color);
 }
 
 header,
@@ -239,28 +258,30 @@ h2 {
 label {
   display: grid;
   gap: 6px;
-  color: #374151;
+  color: var(--text-color);
   font-weight: 700;
 }
 
 input,
 select {
   height: 40px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0 12px;
+  background: var(--surface-bg);
+  color: var(--text-color);
 }
 
 input.has-warning {
-  border-color: #f59e0b;
-  background: #fffbeb;
+  border-color: color-mix(in srgb, #d97706 42%, var(--border-color));
+  background: color-mix(in srgb, #d97706 10%, var(--surface-bg));
 }
 
 button {
-  border: 1px solid #0f62b4;
+  border: 1px solid var(--primary-color);
   border-radius: 6px;
   padding: 9px 14px;
-  background: #0f62b4;
+  background: var(--primary-color);
   color: #ffffff;
   cursor: pointer;
   font-weight: 800;
@@ -268,9 +289,9 @@ button {
 
 button.secondary,
 header button {
-  border-color: #d1d5db;
-  background: #ffffff;
-  color: #374151;
+  border-color: var(--border-color);
+  background: var(--surface-bg);
+  color: var(--text-color);
 }
 
 button:disabled {
@@ -279,8 +300,8 @@ button:disabled {
 }
 
 input:disabled {
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--surface-muted);
+  color: var(--muted-color);
   cursor: not-allowed;
 }
 
@@ -288,8 +309,8 @@ input:disabled {
   margin: 0;
   border-radius: 6px;
   padding: 10px;
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--error-bg);
+  color: var(--error-text);
 }
 
 .signal-key-notice {
@@ -302,12 +323,12 @@ input:disabled {
 }
 
 .signal-key-notice.is-info {
-  background: #eff6ff;
-  color: #1e40af;
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-bg));
+  color: var(--primary-color);
 }
 
 .signal-key-notice.is-warning {
-  background: #fffbeb;
-  color: #92400e;
+  background: color-mix(in srgb, #d97706 10%, var(--surface-bg));
+  color: #d97706;
 }
 </style>

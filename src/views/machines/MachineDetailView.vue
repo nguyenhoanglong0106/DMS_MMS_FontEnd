@@ -1,24 +1,41 @@
 ﻿<template>
   <main class="detail-page">
-    <section v-if="machine" class="detail-header">
-      <div>
-        <h1>{{ machine.code }}</h1>
-        <p>{{ machine.name }} - {{ machine.location?.location_name || 'Chưa có khu vực' }}</p>
-      </div>
-      <div class="detail-statuses">
-        <MachineStatusBadge
-          :status-id="machine.currentStatus?.status_id"
-          :status-name="machine.currentStatus?.status_name"
-          :status-color="machine.currentStatus?.color"
-        />
-        <span class="connection-badge">
-          <span class="connection-dot" :style="{ backgroundColor: machineConnectionColor(machine) }"></span>
-          {{ machineConnectionName(machine) }}
-        </span>
-      </div>
-    </section>
+    <FilterRailLayout title="Chi tiết máy" :subtitle="detailSubtitle" storage-key="machine-detail" rail-label="Thông tin">
+      <template #dock>
+        <section v-if="machine" class="detail-summary">
+          <h2>{{ machine.code }}</h2>
+          <p>{{ machine.name }}</p>
+          <span>{{ machine.location?.location_name || 'Chưa có khu vực' }}</span>
 
-    <p v-if="error" class="error">{{ error }}</p>
+          <div class="detail-statuses">
+            <div class="status-row machine-status-row">
+              <span class="status-label-text">Trạng thái máy</span>
+              <span class="status-value">
+                <span class="status-dot" :style="{ backgroundColor: machineStatusColor(machine) }"></span>
+                {{ machineStatusName(machine) }}
+              </span>
+            </div>
+            <div class="status-row board-status-row">
+              <span class="status-label-text">Trạng thái board</span>
+              <span class="status-value">
+                <span class="connection-dot" :style="{ backgroundColor: machineConnectionColor(machine) }"></span>
+                {{ machineConnectionName(machine) }}
+              </span>
+            </div>
+          </div>
+        </section>
+        <section v-else class="detail-summary">
+          <h2>Đang tải...</h2>
+          <p>Đang lấy thông tin máy.</p>
+        </section>
+
+        <button type="button" class="dock-button primary" @click="loadCurrentMachineView({ reset: true })">
+          <i class="fas fa-sync-alt" aria-hidden="true"></i>
+          <span>Tải lại chi tiết</span>
+        </button>
+      </template>
+
+      <p v-if="error" class="error">{{ error }}</p>
 
     <section class="grid">
       <article class="panel">
@@ -197,11 +214,12 @@
         </div>
       </article>
     </section>
+    </FilterRailLayout>
   </main>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   getMachineById,
@@ -210,7 +228,7 @@ import {
   getMachineStatusHistory
 } from '@/api/machines.api'
 import { getStatuses } from '@/api/statuses.api'
-import MachineStatusBadge from '@/components/machines/MachineStatusBadge.vue'
+import FilterRailLayout from '@/components/layout/FilterRailLayout.vue'
 import { NO_DATA_STATUS, isNoDataStatusId } from '@/constants/machine-status'
 import {
   offMachineConnectionUpdated,
@@ -256,6 +274,12 @@ const connectionPagination = ref({
   total: 0,
   totalPages: 1
 })
+let realtimeHandlersBound = false
+const detailSubtitle = computed(() => (
+  machine.value
+    ? `${machine.value.name} - ${machine.value.location?.location_name || 'Chưa có khu vực'}`
+    : 'Đang tải chi tiết máy'
+))
 const logPaginationText = computed(() => paginationText(logPagination.value, 'log'))
 const historyPaginationText = computed(() => paginationText(historyPagination.value, 'mốc'))
 const canGoPreviousLogPage = computed(() => logPagination.value.page > 1)
@@ -277,6 +301,33 @@ function cappedLogPagination(pagination) {
     limit: LOG_PAGE_SIZE,
     total,
     totalPages
+  }
+}
+
+function resetDetailData() {
+  machine.value = null
+  logs.value = []
+  history.value = []
+  logStatusHistory.value = []
+  connectionHistory.value = []
+  connectionHistoryError.value = ''
+  logPagination.value = {
+    page: 1,
+    limit: LOG_PAGE_SIZE,
+    total: 0,
+    totalPages: 1
+  }
+  historyPagination.value = {
+    page: 1,
+    limit: HISTORY_PAGE_SIZE,
+    total: 0,
+    totalPages: 1
+  }
+  connectionPagination.value = {
+    page: 1,
+    limit: CONNECTION_PAGE_SIZE,
+    total: 0,
+    totalPages: 1
   }
 }
 
@@ -392,6 +443,14 @@ function statusColor(statusId) {
   const meta = statusMeta(statusId)
 
   return meta?.color_code || meta?.color || NO_DATA_STATUS.color
+}
+
+function machineStatusName(item) {
+  return item?.currentStatus?.status_name || statusName(item?.currentStatus?.status_id || item?.status_id)
+}
+
+function machineStatusColor(item) {
+  return item?.currentStatus?.color_code || item?.currentStatus?.color || statusColor(item?.currentStatus?.status_id || item?.status_id)
 }
 
 // Chuẩn hóa mọi biến thể giá trị connect_id/offline/online về đúng 2 mã chuẩn.
@@ -707,95 +766,182 @@ async function loadRelatedData() {
   }
 }
 
-onMounted(async () => {
+async function loadCurrentMachineView({ includeStatuses = false, reset = false } = {}) {
   try {
-    await Promise.all([loadStatuses(), loadMachine(), loadRelatedData()])
-    onMachineLogCreated(handleRealtimeLog)
-    onMachineStatusUpdated(handleRealtimeStatus)
-    onMachineConnectionUpdated(handleRealtimeConnection)
+    if (route.name !== 'Machine Detail' || !route.params.id) {
+      return
+    }
+
+    error.value = ''
+
+    if (reset) {
+      resetDetailData()
+    }
+
+    const tasks = [loadMachine(), loadRelatedData()]
+
+    if (includeStatuses || statuses.value.length === 0) {
+      tasks.unshift(loadStatuses())
+    }
+
+    await Promise.all(tasks)
   } catch (err) {
     error.value = err.message
   }
-})
+}
 
-onUnmounted(() => {
+watch(
+  () => route.params.id,
+  async (nextId, previousId) => {
+    if (
+      route.name !== 'Machine Detail' ||
+      !nextId ||
+      String(nextId) === String(previousId)
+    ) {
+      return
+    }
+
+    await loadCurrentMachineView({ reset: true })
+  }
+)
+
+async function syncActiveRouteMachine() {
+  bindRealtimeHandlers()
+
+  if (
+    route.name === 'Machine Detail' &&
+    route.params.id &&
+    String(machine.value?._id || '') !== String(route.params.id)
+  ) {
+    await loadCurrentMachineView({ reset: true })
+  }
+}
+
+function bindRealtimeHandlers() {
+  if (realtimeHandlersBound) {
+    return
+  }
+
+  onMachineLogCreated(handleRealtimeLog)
+  onMachineStatusUpdated(handleRealtimeStatus)
+  onMachineConnectionUpdated(handleRealtimeConnection)
+  realtimeHandlersBound = true
+}
+
+function unbindRealtimeHandlers() {
+  if (!realtimeHandlersBound) {
+    return
+  }
+
   offMachineLogCreated(handleRealtimeLog)
   offMachineStatusUpdated(handleRealtimeStatus)
   offMachineConnectionUpdated(handleRealtimeConnection)
+  realtimeHandlersBound = false
+}
+
+onMounted(async () => {
+  await loadCurrentMachineView({ includeStatuses: true })
+  bindRealtimeHandlers()
 })
+
+onActivated(syncActiveRouteMachine)
+onDeactivated(unbindRealtimeHandlers)
+
+onUnmounted(unbindRealtimeHandlers)
 </script>
 
 <style scoped>
 .detail-page {
   --detail-table-visible-height: 320px;
-  display: grid;
-  gap: 14px;
   min-height: 50vh;
-  padding: 20px;
-  background: #f8fafc;
+  padding: 16px;
+  background: var(--app-bg);
+  color: var(--text-color);
 }
 
 a {
-  color: #0f62b4;
+  color: var(--primary-color);
   font-weight: 800;
 }
 
-.detail-header,
 .panel {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 12px 14px;
-  background: #ffffff;
+  background: var(--surface-bg);
 }
 
-.detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 64px;
-  padding: 12px 16px;
+.detail-summary {
+  display: grid;
+  gap: 8px;
 }
 
-.detail-statuses,
-.connection-badge {
-  display: inline-flex;
-  align-items: center;
+.detail-summary h2 {
+  color: var(--text-color);
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.detail-summary p {
+  color: var(--text-color);
+  font-weight: 800;
+}
+
+.detail-summary > span {
+  color: var(--muted-color);
+  font-size: 13px;
 }
 
 .detail-statuses {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 14px;
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
 }
 
-.connection-badge {
+.status-row {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--surface-muted);
+}
+
+.status-label-text {
+  color: var(--muted-color);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.status-value {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  color: #111827;
+  min-width: 0;
+  color: var(--text-color);
   font-weight: 800;
   white-space: nowrap;
 }
 
+.status-dot,
 .connection-dot {
-  width: 10px;
-  height: 10px;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
-  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
 }
 
-h1,
+.machine-status-row .status-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-color) 9%, transparent);
+}
+
+.board-status-row .connection-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-color) 9%, transparent);
+}
+
 h2,
 p {
   margin: 0;
-}
-
-.detail-header h1 {
-  font-size: 32px;
-  line-height: 1.1;
-}
-
-.detail-header p {
-  margin-top: 4px;
-  color: #475569;
 }
 
 .grid {
@@ -827,7 +973,7 @@ p {
 }
 
 .panel-header span {
-  color: #64748b;
+  color: var(--muted-color);
   font-size: 13px;
 }
 
@@ -839,11 +985,11 @@ p {
 .pagination-controls button {
   align-self: center;
   height: 32px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0 10px;
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--surface-bg);
+  color: var(--text-color);
   cursor: pointer;
   font-weight: 700;
 }
@@ -860,14 +1006,14 @@ p {
 
 .log-table-scroll {
   max-height: var(--detail-table-visible-height);
-  border: 1px solid #edf2f7;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   overflow-anchor: none;
 }
 
 .history-table-scroll {
   max-height: var(--detail-table-visible-height);
-  border: 1px solid #edf2f7;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   overflow-anchor: none;
 }
@@ -918,14 +1064,14 @@ table {
 
 th,
 td {
-  border-bottom: 1px solid #edf2f7;
+  border-bottom: 1px solid var(--border-color);
   padding: 7px 10px;
   text-align: left;
   vertical-align: middle;
 }
 
 th {
-  background: #f8fafc;
+  background: var(--table-header-bg);
   white-space: nowrap;
 }
 
@@ -943,16 +1089,16 @@ td:nth-child(2) {
 
 .empty,
 .error {
-  color: #991b1b;
+  color: var(--error-text);
 }
 
 .panel-message {
   margin-top: 10px;
-  border: 1px solid #fde68a;
+  border: 1px solid color-mix(in srgb, #d97706 38%, var(--border-color));
   border-radius: 6px;
   padding: 9px 10px;
-  background: #fffbeb;
-  color: #92400e;
+  background: color-mix(in srgb, #d97706 10%, var(--surface-bg));
+  color: var(--text-color);
   font-size: 13px;
   font-weight: 700;
 }
@@ -974,7 +1120,7 @@ td:nth-child(2) {
 .status-swatch {
   width: 14px;
   height: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
+  border: 1px solid color-mix(in srgb, var(--text-color) 14%, transparent);
   border-radius: 4px;
 }
 
@@ -984,7 +1130,6 @@ td:nth-child(2) {
   }
 
   .panel-header,
-  .detail-header,
   .detail-statuses,
   .panel-header div:first-child {
     align-items: stretch;

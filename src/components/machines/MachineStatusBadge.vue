@@ -49,7 +49,7 @@ const displayColor = computed(() => props.statusColor || fallbackStatus.value?.c
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #111827;
+  color: var(--text-color);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -63,6 +63,6 @@ const displayColor = computed(() => props.statusColor || fallbackStatus.value?.c
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-color) 8%, transparent);
 }
 </style>

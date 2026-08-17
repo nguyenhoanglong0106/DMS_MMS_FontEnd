@@ -1,13 +1,19 @@
 <template>
-  <section class="machine-filter">
-    <input v-model.trim="localFilters.keyword" type="search" placeholder="Tìm mã máy hoặc tên máy" />
+  <section class="machine-filter" :class="{ 'is-dock': variant === 'dock' }">
+    <label>
+      <span>Tìm kiếm</span>
+      <input v-model.trim="localFilters.keyword" type="search" placeholder="Tìm mã máy hoặc tên máy" />
+    </label>
 
-    <select v-model="localFilters.location_id">
-      <option value="">Tất cả khu vực</option>
-      <option v-for="location in locations" :key="location.location_id" :value="location.location_id">
-        {{ location.location_name }}
-      </option>
-    </select>
+    <label>
+      <span>Khu vực</span>
+      <select v-model="localFilters.location_id">
+        <option value="">Tất cả khu vực</option>
+        <option v-for="location in locations" :key="location.location_id" :value="location.location_id">
+          {{ location.location_name }}
+        </option>
+      </select>
+    </label>
 
     <button type="button" @click="$emit('apply', { keyword: localFilters.keyword, location_id: localFilters.location_id })">Lọc</button>
     <button type="button" class="secondary" @click="$emit('reset')">Đặt lại</button>
@@ -25,6 +31,10 @@ const props = defineProps({
   locations: {
     type: Array,
     default: () => []
+  },
+  variant: {
+    type: String,
+    default: 'inline'
   }
 })
 
@@ -53,29 +63,61 @@ input,
 select,
 button {
   height: 38px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0 12px;
-  background: #ffffff;
+  background: var(--surface-bg);
+  color: var(--text-color);
+}
+
+label {
+  display: contents;
+}
+
+label span {
+  display: none;
 }
 
 button {
-  border-color: #0f62b4;
-  background: #0f62b4;
+  border-color: var(--primary-color);
+  background: var(--primary-color);
   color: #ffffff;
   cursor: pointer;
   font-weight: 700;
 }
 
 button.secondary {
-  border-color: #d1d5db;
-  background: #ffffff;
-  color: #374151;
+  border-color: var(--border-color);
+  background: var(--surface-bg);
+  color: var(--text-color);
 }
 
 @media (max-width: 980px) {
   .machine-filter {
     grid-template-columns: 1fr 1fr;
   }
+}
+
+.machine-filter.is-dock {
+  grid-template-columns: 1fr;
+}
+
+.machine-filter.is-dock label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted-color);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.machine-filter.is-dock label span {
+  display: block;
+}
+
+.machine-filter.is-dock input,
+.machine-filter.is-dock select,
+.machine-filter.is-dock button {
+  width: 100%;
+  box-sizing: border-box;
 }
 </style>

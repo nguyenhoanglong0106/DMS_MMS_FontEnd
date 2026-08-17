@@ -1,7 +1,7 @@
-// Cấu trúc menu sidebar; mục có "children" sẽ hiện submenu khi click.
+// Cấu trúc menu header; mục có "children" sẽ hiện dropdown khi hover/click.
 export const sidebarMenus = [
   {
-    title: 'Home',
+    title: 'Trang chủ',
     icon: 'fas fa-home',
     path: '/home',
   },
@@ -15,7 +15,7 @@ export const sidebarMenus = [
         path: '/machines',
       },
       {
-        title: 'Giám sát',
+        title: 'Giám sát máy',
         icon: 'fas fa-chart-line',
         path: '/machines/monitoring',
       },
@@ -27,7 +27,7 @@ export const sidebarMenus = [
     ]
   },
   {
-    title: 'Setting',
+    title: 'Cài đặt',
     icon: 'fas fa-sliders-h',
     children: [
       {

@@ -1,46 +1,41 @@
 ﻿<template>
   <main class="machine-page">
-    <header class="page-header">
-      <div>
-        <h1>Đăng ký máy</h1>
-        <p>Quản lý danh sách máy và khu vực.</p>
-      </div>
-      <button
-        type="button"
-        class="add-machine-button"
-        title="Thêm máy"
-        aria-label="Thêm máy"
-        @click="openCreateModal"
-      >
-        <i class="fas fa-plus" aria-hidden="true"></i>
-      </button>
-    </header>
+    <FilterRailLayout title="Đăng ký máy" :subtitle="registrationSummaryText" storage-key="machine-registration">
+      <template #dock>
+        <button type="button" class="dock-button primary" @click="openCreateModal">
+          <i class="fas fa-plus" aria-hidden="true"></i>
+          <span>Thêm máy</span>
+        </button>
 
-    <MachineFilter
-      :filters="machineStore.filters"
-      :locations="locations"
-      @apply="applyFilters"
-      @reset="resetFilters"
-    />
+        <MachineFilter
+          variant="dock"
+          :filters="machineStore.filters"
+          :locations="locations"
+          @apply="applyFilters"
+          @reset="resetFilters"
+        />
+      </template>
 
-    <p v-if="message" class="message">{{ message }}</p>
-    <p v-if="machineStore.error" class="error">{{ machineStore.error }}</p>
+      <p v-if="message" class="message">{{ message }}</p>
+      <p v-if="machineStore.error" class="error">{{ machineStore.error }}</p>
 
-    <MachineTable
-      :machines="machineStore.machines"
-      :pagination="machineStore.pagination"
-      :loading="machineStore.loading"
-      :connection-statuses="connectionStatuses"
-      @edit="openEditModal"
-      @delete="deleteTarget = $event"
-      @page-change="changePage"
-      @sort="changeSort"
-    />
+      <MachineTable
+        :machines="machineStore.machines"
+        :pagination="machineStore.pagination"
+        :loading="machineStore.loading"
+        :connection-statuses="connectionStatuses"
+        @edit="openEditModal"
+        @delete="deleteTarget = $event"
+        @page-change="changePage"
+        @sort="changeSort"
+      />
+    </FilterRailLayout>
 
     <MachineFormModal
       :show="showForm"
       :machine="editingMachine"
       :machines="machinesForValidation"
+      :machines-loading="validationLoading"
       :locations="locations"
       :saving="machineStore.saving"
       :error="formError"
@@ -59,10 +54,11 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getLocations } from '@/api/locations.api'
 import { getMachineConnectionStatuses } from '@/api/machineConnectionStatuses.api'
 import { getMachines } from '@/api/machines.api'
+import FilterRailLayout from '@/components/layout/FilterRailLayout.vue'
 import MachineDeleteDialog from '@/components/machines/MachineDeleteDialog.vue'
 import MachineFilter from '@/components/machines/MachineFilter.vue'
 import MachineFormModal from '@/components/machines/MachineFormModal.vue'
@@ -77,13 +73,26 @@ const machineStore = useMachineStore()
 const locations = ref([])
 const connectionStatuses = ref([])
 const machinesForValidation = ref([])
+const validationLoading = ref(false)
 const showForm = ref(false)
 const editingMachine = ref(null)
 const deleteTarget = ref(null)
 const formError = ref('')
 const message = ref('')
 let messageTimer = null
+let validationLoaded = false
+let validationRequest = null
 const VALIDATION_PAGE_SIZE = 100
+
+const registrationSummaryText = computed(() => {
+  if (machineStore.loading) {
+    return 'Đang tải danh sách máy...'
+  }
+
+  const total = Number(machineStore.pagination.total) || machineStore.machines.length
+
+  return `${total} máy đang quản lý`
+})
 
 // Hiện thông báo thành công tạm thời, tự ẩn sau 2.5s.
 function showMessage(text) {
@@ -112,24 +121,52 @@ async function loadReferenceData() {
 
 // Tải danh sách máy riêng cho validate Signal Keys, không làm ảnh hưởng phân trang bảng.
 async function loadMachinesForValidation() {
-  const machines = []
-  let page = 1
-  let totalPages = 1
+  if (validationRequest) {
+    return validationRequest
+  }
 
-  do {
-    const response = await getMachines({
-      page,
-      limit: VALIDATION_PAGE_SIZE,
-      sortBy: 'code',
-      sortOrder: 'asc'
-    })
+  validationLoading.value = true
+  validationRequest = (async () => {
+    const machines = []
+    let page = 1
+    let totalPages = 1
 
-    machines.push(...(response.data || []))
-    totalPages = Number(response.pagination?.totalPages) || 1
-    page += 1
-  } while (page <= totalPages)
+    do {
+      const response = await getMachines({
+        page,
+        limit: VALIDATION_PAGE_SIZE,
+        sortBy: 'code',
+        sortOrder: 'asc'
+      })
 
-  machinesForValidation.value = machines
+      machines.push(...(response.data || []))
+      totalPages = Number(response.pagination?.totalPages) || 1
+      page += 1
+    } while (page <= totalPages)
+
+    machinesForValidation.value = machines
+    validationLoaded = true
+  })()
+
+  try {
+    await validationRequest
+  } finally {
+    validationRequest = null
+    validationLoading.value = false
+  }
+}
+
+async function ensureMachinesForValidation() {
+  if (validationLoaded) {
+    return
+  }
+
+  await loadMachinesForValidation()
+}
+
+async function refreshMachinesForValidation() {
+  validationLoaded = false
+  await loadMachinesForValidation()
 }
 
 // Mở modal ở chế độ tạo máy mới.
@@ -137,6 +174,9 @@ function openCreateModal() {
   formError.value = ''
   editingMachine.value = null
   showForm.value = true
+  ensureMachinesForValidation().catch((error) => {
+    formError.value = error.message
+  })
 }
 
 // Mở modal ở chế độ sửa máy đang chọn.
@@ -144,6 +184,9 @@ function openEditModal(machine) {
   formError.value = ''
   editingMachine.value = machine
   showForm.value = true
+  ensureMachinesForValidation().catch((error) => {
+    formError.value = error.message
+  })
 }
 
 // Đóng modal form và xóa lỗi tạm thời.
@@ -172,7 +215,7 @@ async function saveMachine(payload, clientError) {
     }
 
     closeForm()
-    await loadMachinesForValidation()
+    await refreshMachinesForValidation()
     await machineStore.fetchStatusCount()
   } catch (error) {
     formError.value = error.message
@@ -184,7 +227,7 @@ async function confirmDelete(machine) {
   await machineStore.deleteMachine(machine._id)
   deleteTarget.value = null
   showMessage('Đã xóa máy.')
-  await loadMachinesForValidation()
+  await refreshMachinesForValidation()
   await machineStore.fetchStatusCount()
 }
 
@@ -225,8 +268,7 @@ onMounted(async () => {
   await Promise.all([
     loadReferenceData(),
     machineStore.fetchMachines(),
-    machineStore.fetchStatusCount(),
-    loadMachinesForValidation()
+    machineStore.fetchStatusCount()
   ])
 })
 
@@ -241,52 +283,15 @@ onUnmounted(() => {
 
 <style scoped>
 .machine-page {
-  display: grid;
-  align-content: start;
-  gap: 18px;
   min-height: 100vh;
-  padding: 28px;
-  background: #f8fafc;
-  color: #111827;
-}
-
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-h1 {
-  margin: 0 0 6px;
-  font-size: 28px;
+  padding: 16px;
+  background: var(--app-bg);
+  color: var(--text-color);
 }
 
 p {
   margin: 0;
-  color: #6b7280;
-}
-
-.page-header button {
-  width: 40px;
-  height: 40px;
-  border: 0;
-  border-radius: 6px;
-  padding: 0;
-  background: #0f62b4;
-  color: #ffffff;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.page-header button:hover {
-  background: #0b559f;
-  box-shadow: 0 8px 18px rgba(15, 98, 180, 0.22);
-  transform: translateY(-1px);
+  color: var(--muted-color);
 }
 
 .message,
@@ -298,12 +303,12 @@ p {
 }
 
 .message {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .error {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--error-bg);
+  color: var(--error-text);
 }
 </style>

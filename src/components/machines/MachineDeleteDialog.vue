@@ -39,14 +39,15 @@ defineEmits(['cancel', 'confirm'])
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgba(15, 23, 42, 0.45);
+  background: color-mix(in srgb, #0f172a 45%, transparent);
 }
 
 .dialog {
   width: min(440px, 100%);
   border-radius: 8px;
   padding: 18px;
-  background: #ffffff;
+  background: var(--surface-bg);
+  color: var(--text-color);
 }
 
 h2 {
@@ -54,7 +55,7 @@ h2 {
 }
 
 p {
-  color: #4b5563;
+  color: var(--muted-color);
 }
 
 footer {
@@ -64,17 +65,18 @@ footer {
 }
 
 button {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 9px 14px;
-  background: #ffffff;
+  background: var(--surface-bg);
+  color: var(--text-color);
   cursor: pointer;
   font-weight: 800;
 }
 
 .danger {
-  border-color: #dc2626;
-  background: #dc2626;
+  border-color: var(--error-text);
+  background: var(--error-text);
   color: #ffffff;
 }
 </style>

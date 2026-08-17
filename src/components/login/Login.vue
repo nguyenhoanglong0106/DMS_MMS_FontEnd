@@ -82,17 +82,22 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #70bce7, #adf7d2);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--primary-color) 42%, var(--app-bg)),
+    color-mix(in srgb, var(--sidebar-bg-color) 34%, var(--app-bg))
+  );
   padding: 20px;
 }
 
 .login-card {
   width: 100%;
   max-width: 420px;
-  background: #ffffff;
+  background: var(--surface-bg);
+  color: var(--text-color);
   border-radius: 18px;
   padding: 36px;
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 20px 45px color-mix(in srgb, var(--text-color) 22%, transparent);
 }
 
 .login-header {
@@ -102,14 +107,14 @@ export default {
 
 .login-header h1 {
   margin: 0;
-  color: #1f2937;
+  color: var(--text-color);
   font-size: 30px;
   font-weight: 700;
 }
 
 .login-header p {
   margin-top: 10px;
-  color: #6b7280;
+  color: var(--muted-color);
   font-size: 15px;
 }
 
@@ -121,7 +126,7 @@ export default {
     text-align: left;
   display: block;
   margin-bottom: 8px;
-  color: #374151;
+  color: var(--text-color);
   font-size: 14px;
   font-weight: 600;
 }
@@ -129,17 +134,19 @@ export default {
 .form-group input {
   width: 100%;
   height: 40px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 5px;
+  background: var(--surface-bg);
+  color: var(--text-color);
   font-size: 15px;
   outline: none;
   transition: 0.2s;
 }
 
 .form-group input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 18%, transparent);
 }
 
 .form-options {
@@ -154,11 +161,11 @@ export default {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #4b5563;
+  color: var(--muted-color);
 }
 
 .form-options a {
-  color: #2563eb;
+  color: var(--primary-color);
   text-decoration: none;
   font-weight: 600;
 }
@@ -172,7 +179,7 @@ export default {
   height: 48px;
   border: none;
   border-radius: 10px;
-  background: #2563eb;
+  background: var(--primary-color);
   color: #ffffff;
   font-size: 16px;
   font-weight: 700;
@@ -181,7 +188,7 @@ export default {
 }
 
 .login-button:hover {
-  background: #1d4ed8;
+  background: var(--primary-hover-color);
   transform: translateY(-1px);
 }
 
@@ -189,8 +196,8 @@ export default {
   margin-top: 18px;
   padding: 12px;
   border-radius: 8px;
-  background: #eff6ff;
-  color: #ff0000;
+  background: var(--error-bg);
+  color: var(--error-text);
   font-size: 14px;
   text-align: center;
 }

@@ -1,6 +1,4 @@
 <script>
-import { collapsed } from './state'
-
 export default {
   name: 'SideBarItem',
   props: {
@@ -10,47 +8,88 @@ export default {
     }
   },
 
-  // Khởi tạo trạng thái mở menu và hover.
   data() {
     return {
       open: false,
-      hover: false
-    }
-  },
-
-  // Cung cấp trạng thái thu gọn sidebar.
-  setup() {
-    return {
-      collapsed
+      hover: false,
+      closeTimer: null
     }
   },
 
   computed: {
-    // Kiểm tra menu có submenu hay không.
     hasChildren() {
       return this.item.children && this.item.children.length > 0
     },
 
-    // Xác định khi nào hiển thị submenu.
-    showSubmenu() {
-      if (!this.hasChildren) return false
+    showDropdown() {
+      return this.hasChildren && (this.hover || this.open)
+    },
 
-      if (this.collapsed) {
-        return this.hover
+    isActiveParent() {
+      if (!this.hasChildren) {
+        return false
       }
 
-      return this.open
+      return this.item.children.some((child) => this.isPathActive(child.path))
     }
   },
 
-  methods: {
-    // Đóng mở submenu khi sidebar đang mở rộng.
-    toggleMenu() {
-      if (!this.hasChildren) return
+  beforeUnmount() {
+    this.cancelCloseMenu()
+  },
 
-      if (!this.collapsed) {
-        this.open = !this.open
+  methods: {
+    isPathActive(path) {
+      const currentPath = this.$route.path
+
+      if (currentPath === path) {
+        return true
       }
+
+      if (path === '/machines') {
+        return /^\/machines\/[^/]+(?:\/status-history)?$/.test(currentPath)
+      }
+
+      return currentPath.startsWith(`${path}/`)
+    },
+
+    toggleMenu() {
+      if (!this.hasChildren) {
+        return
+      }
+
+      this.cancelCloseMenu()
+      this.open = !this.open
+    },
+
+    openMenu() {
+      this.cancelCloseMenu()
+      this.hover = true
+    },
+
+    scheduleCloseMenu() {
+      this.cancelCloseMenu()
+
+      this.closeTimer = setTimeout(() => {
+        this.open = false
+        this.hover = false
+        this.closeTimer = null
+      }, 180)
+    },
+
+    cancelCloseMenu() {
+      if (!this.closeTimer) {
+        return
+      }
+
+      clearTimeout(this.closeTimer)
+      this.closeTimer = null
+    },
+
+    closeMenu() {
+      this.cancelCloseMenu()
+      this.open = false
+      this.hover = false
     }
   }
 }
@@ -58,74 +97,52 @@ export default {
 
 <template>
   <div
-    class="sidebar-item"
-    @mouseenter="hover = true"
-    @mouseleave="hover = false"
+    class="nav-item"
+    @mouseenter="openMenu"
+    @mouseleave="scheduleCloseMenu"
   >
-    <!-- Menu có submenu -->
-    <div
+    <button
       v-if="hasChildren"
-      class="menu-parent"
-      :class="{ active: open, collapsed: collapsed }"
+      type="button"
+      class="nav-trigger"
+      :class="{ active: isActiveParent, open: showDropdown }"
+      :aria-expanded="showDropdown"
+      aria-haspopup="true"
       @click="toggleMenu"
     >
-      <div class="menu-left">
-        <i :class="item.icon"></i>
-        <span v-if="!collapsed">{{ item.title }}</span>
-      </div>
+      <span class="nav-item-content">
+        <i :class="item.icon" aria-hidden="true"></i>
+        <span>{{ item.title }}</span>
+      </span>
+      <i class="fas fa-chevron-down nav-arrow" aria-hidden="true"></i>
+    </button>
 
-      <i
-        v-if="!collapsed"
-        class="fas fa-chevron-down menu-arrow"
-        :class="{ open: open }"
-      ></i>
-    </div>
-
-    <!-- Menu thường -->
     <router-link
       v-else
       :to="item.path"
-      class="menu-parent"
-      :class="{ collapsed: collapsed }"
+      class="nav-link"
+      @click="closeMenu"
     >
-      <div class="menu-left">
-        <i :class="item.icon"></i>
-        <span v-if="!collapsed">{{ item.title }}</span>
-      </div>
+      <span class="nav-item-content">
+        <i :class="item.icon" aria-hidden="true"></i>
+        <span>{{ item.title }}</span>
+      </span>
     </router-link>
 
-    <!-- Submenu khi sidebar mở -->
     <div
-      v-if="showSubmenu && !collapsed"
-      class="submenu"
+      v-if="showDropdown"
+      class="dropdown-menu"
+      @mouseenter="cancelCloseMenu"
+      @mouseleave="scheduleCloseMenu"
     >
       <router-link
         v-for="child in item.children"
         :key="child.path"
         :to="child.path"
-        class="submenu-item"
+        class="dropdown-item"
+        @click="closeMenu"
       >
-        <i :class="child.icon"></i>
-        <span>{{ child.title }}</span>
-      </router-link>
-    </div>
-
-    <!-- Flyout submenu khi sidebar thu nhỏ -->
-    <div
-      v-if="showSubmenu && collapsed"
-      class="flyout-menu"
-    >
-      <div class="flyout-title">
-        {{ item.title }}
-      </div>
-
-      <router-link
-        v-for="child in item.children"
-        :key="child.path"
-        :to="child.path"
-        class="flyout-item"
-      >
-        <i :class="child.icon"></i>
+        <i :class="child.icon" aria-hidden="true"></i>
         <span>{{ child.title }}</span>
       </router-link>
     </div>
@@ -133,168 +150,141 @@ export default {
 </template>
 
 <style scoped>
-.sidebar-item {
-  width: 100%;
+.nav-item {
   position: relative;
+  flex: 0 0 auto;
 }
 
-.menu-parent {
-  width: 100%;
-  height: 46px;
-
-  display: flex;
+.nav-trigger,
+.nav-link {
+  min-height: 40px;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-
-  padding: 2px;
-  border-radius: 10px;
-
-  color: white;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0 14px;
+  background: transparent;
+  color: #ffffff;
   text-decoration: none;
   cursor: pointer;
-
   transition: 0.2s ease;
 }
 
-.menu-parent:hover,
-.menu-parent.active,
-.menu-parent.router-link-exact-active {
-  background-color: var(--sidebar-item-hover);
+.nav-trigger:hover,
+.nav-trigger.open,
+.nav-link:hover,
+.nav-link.router-link-exact-active {
+  border-color: transparent;
+  background: transparent;
+  color: #ffffff;
+  box-shadow: inset 0 -3px 0 rgba(255, 255, 255, 0.48);
 }
 
-.menu-left {
-  display: flex;
+.nav-trigger.active,
+.nav-link.router-link-exact-active {
+  font-weight: 800;
+  background: transparent;
+  box-shadow: inset 0 -3px 0 #ffffff;
+}
+
+.nav-item-content {
+  min-width: 0;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-.menu-left i {
-  width: 22px;
-  min-width: 22px;
+.nav-item-content i {
+  width: 18px;
+  min-width: 18px;
+  color: currentColor;
   text-align: center;
-  font-size: 17px;
+  font-size: 15px;
 }
 
-.menu-left span {
-  font-size: 15px;
-  font-weight: 600;
+.nav-item-content span {
+  overflow: hidden;
+  line-height: 1.2;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.menu-parent.collapsed {
-  justify-content: center;
-  padding: 0;
-}
-
-.menu-parent.collapsed .menu-left {
-  width: 100%;
-  justify-content: center;
-  gap: 0;
-}
-
-.menu-parent.collapsed .menu-left i {
-  width: 100%;
-  min-width: unset;
-  font-size: 19px;
-}
-
-.menu-arrow {
-  font-size: 13px;
-  margin-right: 12px;
+.nav-arrow {
+  color: currentColor;
+  font-size: 12px;
   transition: 0.2s ease;
 }
 
-.menu-arrow.open {
+.nav-trigger.open .nav-arrow {
   transform: rotate(180deg);
 }
 
-.submenu {
-  margin-top: 6px;
-  margin-bottom: 4px;
-
-  background-color: rgba(0, 0, 0, 0.12);
-  border-radius: 9px;
-
-  overflow: hidden;
-}
-
-.submenu-item {
-  height: 42px;
-
-  display: flex;
-  align-items: center;
-  gap: 12px;
-
-  padding: 0 14px 0 28px;
-
-  color: white;
-  text-decoration: none;
-  font-size: 14px;
-
-  transition: 0.2s ease;
-}
-
-.submenu-item i {
-  width: 18px;
-  text-align: center;
-  font-size: 13px;
-}
-
-.submenu-item:hover,
-.submenu-item.router-link-exact-active {
-  background-color: var(--sidebar-item-active);
-}
-
-/* Flyout khi sidebar thu nhỏ */
-.flyout-menu {
+.dropdown-menu {
   position: absolute;
-  top: 0;
-  left: calc(100% + 10px);
-
-  width: 220px;
-  padding: 8px;
-
-  background-color: var(--sidebar-bg-color);
-  border-radius: 10px;
-
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
-
-  z-index: 9999;
+  top: 100%;
+  left: 0;
+  min-width: 230px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 8px 8px;
+  border: 1px solid color-mix(in srgb, var(--surface-bg) 18%, transparent);
+  border-radius: 8px;
+  background: var(--sidebar-bg-color);
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--text-color) 18%, transparent);
+  z-index: 1001;
 }
 
-.flyout-title {
-  padding: 10px 12px;
-  font-size: 14px;
-  font-weight: 700;
-  color: white;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-  margin-bottom: 6px;
-}
-
-.flyout-item {
-  height: 40px;
-
+.dropdown-item {
+  min-height: 38px;
   display: flex;
   align-items: center;
-  gap: 12px;
-
-  padding: 0 12px;
-  border-radius: 8px;
-
-  color: white;
+  gap: 10px;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: #ffffff;
   text-decoration: none;
-  font-size: 14px;
-
   transition: 0.2s ease;
 }
 
-.flyout-item i {
+.dropdown-item i {
   width: 18px;
+  min-width: 18px;
+  color: rgba(255, 255, 255, 0.86);
   text-align: center;
+  font-size: 14px;
 }
 
-.flyout-item:hover,
-.flyout-item.router-link-exact-active {
-  background-color: var(--sidebar-item-active);
+.dropdown-item span {
+  overflow: hidden;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-item:hover,
+.dropdown-item.router-link-exact-active {
+  background: var(--sidebar-item-active);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .nav-item {
+    flex: 1 1 auto;
+  }
+
+  .nav-trigger,
+  .nav-link {
+    width: 100%;
+    padding: 0 10px;
+  }
+
+  .dropdown-menu {
+    right: 0;
+    left: auto;
+    min-width: min(260px, calc(100vw - 32px));
+  }
 }
 </style>

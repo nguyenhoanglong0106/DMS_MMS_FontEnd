@@ -3,9 +3,14 @@
 
   <div v-else class="app-shell">
     <SideBar @logout="handleLogout" />
+    <AppTabs />
 
-    <main class="app-content" :style="{ marginLeft: sidebarWidth }">
-      <router-view />
+    <main class="app-content">
+      <router-view v-slot="{ Component, route }">
+        <KeepAlive>
+          <component :is="Component" :key="route.meta?.cacheKey || route.fullPath" />
+        </KeepAlive>
+      </router-view>
     </main>
   </div>
 </template>
@@ -13,7 +18,7 @@
 <script>
 import Login from './components/login/Login.vue'
 import SideBar from './components/sidebar/SideBar.vue'
-import { sidebarWidth } from './components/sidebar/state'
+import AppTabs from './components/tabs/AppTabs.vue'
 
 const AUTH_STORAGE_KEY = 'dms_mms_login_state'
 
@@ -68,20 +73,14 @@ export default {
   name: 'App',
   components: {
     Login,
-    SideBar
+    SideBar,
+    AppTabs
   },
 
   // Khởi tạo trạng thái đăng nhập.
   data() {
     return {
       isLoggedIn: hasSavedLogin()
-    }
-  },
-
-  // Cung cấp chiều rộng sidebar cho layout.
-  setup() {
-    return {
-      sidebarWidth
     }
   },
 
@@ -178,8 +177,10 @@ button {
 button i,
 a.action-icon i,
 .menu-left i,
+.nav-item-content i,
 .submenu-item i,
-.flyout-item i {
+.flyout-item i,
+.dropdown-item i {
   font-family: "Font Awesome 5 Free" !important;
   font-style: normal;
   line-height: 1;
@@ -285,7 +286,10 @@ th,
   color: var(--muted-color) !important;
 }
 
-:where(.code, a:not(.menu-parent):not(.submenu-item):not(.flyout-item):not(.action-icon)) {
+:where(
+  .code,
+  a:not(.menu-parent):not(.submenu-item):not(.flyout-item):not(.action-icon):not(.nav-link):not(.dropdown-item)
+) {
   color: var(--primary-color) !important;
 }
 
@@ -305,7 +309,6 @@ th,
 }
 
 .app-content {
-  min-height: 100vh;
-  transition: margin-left 0.3s ease;
+  min-height: calc(100vh - 98px);
 }
 </style>

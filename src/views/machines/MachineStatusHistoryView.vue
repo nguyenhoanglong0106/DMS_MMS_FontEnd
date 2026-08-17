@@ -1,18 +1,31 @@
 ﻿<template>
   <main class="history-page">
-    <section class="filters">
-      <input v-model="filters.from" type="datetime-local" />
-      <input v-model="filters.to" type="datetime-local" />
-      <select v-model="filters.status_id">
-        <option value="">Tất cả</option>
-        <option v-for="status in statuses" :key="status.status_id" :value="status.status_id">
-          {{ status.status_name }}
-        </option>
-      </select>
-      <button type="button" @click="loadHistory">Lọc</button>
-    </section>
+    <FilterRailLayout title="Lịch sử trạng thái" subtitle="Lọc theo thời gian và trạng thái" storage-key="machine-status-history">
+      <template #dock>
+        <label class="dock-field">
+          <span>Từ thời gian</span>
+          <input v-model="filters.from" type="datetime-local" />
+        </label>
+        <label class="dock-field">
+          <span>Đến thời gian</span>
+          <input v-model="filters.to" type="datetime-local" />
+        </label>
+        <label class="dock-field">
+          <span>Trạng thái</span>
+          <select v-model="filters.status_id">
+            <option value="">Tất cả</option>
+            <option v-for="status in statuses" :key="status.status_id" :value="status.status_id">
+              {{ status.status_name }}
+            </option>
+          </select>
+        </label>
+        <button type="button" class="dock-button primary" @click="loadHistory">
+          <i class="fas fa-filter" aria-hidden="true"></i>
+          <span>Lọc dữ liệu</span>
+        </button>
+      </template>
 
-    <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error">{{ error }}</p>
 
     <table>
       <thead>
@@ -38,14 +51,16 @@
         </tr>
       </tbody>
     </table>
+    </FilterRailLayout>
   </main>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getMachineStatusHistory } from '@/api/machines.api'
 import { getStatuses } from '@/api/statuses.api'
+import FilterRailLayout from '@/components/layout/FilterRailLayout.vue'
 import { NO_DATA_STATUS, isNoDataStatusId } from '@/constants/machine-status'
 import { formatDateTime as formatDate } from '@/utils/date-format'
 
@@ -102,15 +117,29 @@ onMounted(async () => {
     error.value = err.message
   }
 })
+
+watch(
+  () => route.params.id,
+  async (nextId, previousId) => {
+    if (
+      route.name !== 'Machine Status History' ||
+      !nextId ||
+      String(nextId) === String(previousId)
+    ) {
+      return
+    }
+
+    await loadHistory()
+  }
+)
 </script>
 
 <style scoped>
 .history-page {
-  display: grid;
-  gap: 18px;
   min-height: 100vh;
-  padding: 28px;
-  background: #f8fafc;
+  padding: 16px;
+  background: var(--app-bg);
+  color: var(--text-color);
 }
 
 h1 {
@@ -118,50 +147,32 @@ h1 {
 }
 
 a {
-  color: #0f62b4;
-  font-weight: 800;
-}
-
-.filters {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
-  gap: 12px;
-}
-
-input,
-select,
-button {
-  height: 38px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 0 12px;
-}
-
-button {
-  background: #0f62b4;
-  color: #ffffff;
-  cursor: pointer;
+  color: var(--primary-color);
   font-weight: 800;
 }
 
 table {
   width: 100%;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   border-collapse: collapse;
-  background: #ffffff;
+  background: var(--surface-bg);
 }
 
 th,
 td {
-  border-bottom: 1px solid #edf2f7;
+  border-bottom: 1px solid var(--border-color);
   padding: 12px;
   text-align: left;
 }
 
+th {
+  background: var(--table-header-bg);
+}
+
 .empty,
 .error {
-  color: #991b1b;
+  color: var(--error-text);
 }
 
 .status-color {
@@ -174,7 +185,7 @@ td {
 .status-swatch {
   width: 14px;
   height: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
+  border: 1px solid color-mix(in srgb, var(--text-color) 14%, transparent);
   border-radius: 4px;
 }
 </style>
