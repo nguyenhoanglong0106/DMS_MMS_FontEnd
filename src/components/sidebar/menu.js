@@ -27,6 +27,22 @@ export const sidebarMenus = [
     ]
   },
   {
+    title: 'Kế hoạch sản xuất',
+    icon: 'fas fa-calendar-check',
+    children: [
+      {
+        title: 'Kế hoạch sản xuất',
+        icon: 'fas fa-calendar-check',
+        path: '/khsx',
+      },
+      {
+        title: 'Cấu hình',
+        icon: 'fas fa-clock',
+        path: '/khsx/service',
+      }
+    ]
+  },
+  {
     title: 'Cài đặt',
     icon: 'fas fa-sliders-h',
     children: [

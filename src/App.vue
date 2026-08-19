@@ -239,7 +239,8 @@ textarea:focus {
   .detail-page,
   .timeline-page,
   .history-page,
-  .settings-page
+  .settings-page,
+  .khsx-page
 ) {
   background: var(--app-bg) !important;
   color: var(--text-color) !important;

@@ -7,6 +7,8 @@ import MachineMonitoringView from '@/views/machines/MachineMonitoringView.vue'
 import MachineRegistrationView from '@/views/machines/MachineRegistrationView.vue'
 import MachineStatusHistoryView from '@/views/machines/MachineStatusHistoryView.vue'
 import MachineStatusTimelineView from '@/views/machines/MachineStatusTimelineView.vue'
+import KhsxServiceView from '@/views/production/KhsxServiceView.vue'
+import ProductionPlanView from '@/views/production/ProductionPlanView.vue'
 import SettingsMasterDataView from '@/views/settings/SettingsMasterDataView.vue'
 import ThemeSettingsView from '@/views/settings/ThemeSettingsView.vue'
 
@@ -72,6 +74,24 @@ const routes = [
       icon: 'fas fa-clipboard-list',
       tabKey: 'machine-status-history',
       cacheKey: 'machine-status-history'
+    }
+  },
+  {
+    path: '/khsx',
+    name: 'Production Plan',
+    component: ProductionPlanView,
+    meta: {
+      tabTitle: 'Kế hoạch sản xuất',
+      icon: 'fas fa-calendar-check'
+    }
+  },
+  {
+    path: '/khsx/service',
+    name: 'Khsx Service',
+    component: KhsxServiceView,
+    meta: {
+      tabTitle: 'Cấu hình',
+      icon: 'fas fa-clock'
     }
   },
   {
