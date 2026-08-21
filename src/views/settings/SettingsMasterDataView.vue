@@ -50,39 +50,26 @@
           <span>{{ locations.length }} dòng</span>
         </header>
 
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>STT</th>
-                <th>Mã location</th>
-                <th>Tên location</th>
-                <th>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="loading">
-                <td colspan="4" class="empty">Đang tải dữ liệu...</td>
-              </tr>
-              <tr v-else-if="locations.length === 0">
-                <td colspan="4" class="empty">Chưa có location.</td>
-              </tr>
-              <tr v-for="(location, index) in locations" v-else :key="location._id">
-                <td>{{ index + 1 }}</td>
-                <td class="code">{{ location.location_id }}</td>
-                <td>{{ location.location_name }}</td>
-                <td class="actions">
-                  <button type="button" class="action-icon edit" title="Sửa" @click="editLocation(location)">
-                    <i class="fas fa-edit" aria-hidden="true"></i>
-                  </button>
-                  <button type="button" class="action-icon danger" title="Xóa" @click="removeLocation(location)">
-                    <i class="fas fa-trash-alt" aria-hidden="true"></i>
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          :columns="locationColumns"
+          :rows="locations"
+          :loading="loading"
+          row-key="_id"
+          storage-key="settings-locations"
+          loading-text="Đang tải dữ liệu..."
+          empty-text="Chưa có location."
+        >
+          <template #cell-actions="{ row }">
+            <div class="actions">
+              <button type="button" class="action-icon edit" title="Sửa" @click="editLocation(row)">
+                <i class="fas fa-edit" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="action-icon danger" title="Xóa" @click="removeLocation(row)">
+                <i class="fas fa-trash-alt" aria-hidden="true"></i>
+              </button>
+            </div>
+          </template>
+        </DataGrid>
       </section>
     </section>
 
@@ -125,43 +112,30 @@
           <span>{{ statuses.length }} dòng</span>
         </header>
 
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>STT</th>
-                <th>Mã trạng thái</th>
-                <th>Tên trạng thái</th>
-                <th>Mã màu</th>
-                <th>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="loading">
-                <td colspan="5" class="empty">Đang tải dữ liệu...</td>
-              </tr>
-              <tr v-else-if="statuses.length === 0">
-                <td colspan="5" class="empty">Chưa có trạng thái.</td>
-              </tr>
-              <tr v-for="(status, index) in statuses" v-else :key="status._id || status.status_id">
-                <td>{{ index + 1 }}</td>
-                <td class="code">{{ status.status_id }}</td>
-                <td>{{ status.status_name }}</td>
-                <td>
-                  <span class="status-color">
-                    <span :style="{ backgroundColor: displayStatusColor(status) }"></span>
-                    {{ displayStatusColor(status) }}
-                  </span>
-                </td>
-                <td class="actions">
-                  <button type="button" class="action-icon edit" title="Sửa" @click="editStatus(status)">
-                    <i class="fas fa-edit" aria-hidden="true"></i>
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          :columns="statusColumns"
+          :rows="statuses"
+          :loading="loading"
+          :row-key="statusRowKey"
+          storage-key="settings-statuses"
+          loading-text="Đang tải dữ liệu..."
+          empty-text="Chưa có trạng thái."
+        >
+          <template #cell-color="{ row }">
+            <span class="status-color">
+              <span :style="{ backgroundColor: displayStatusColor(row) }"></span>
+              {{ displayStatusColor(row) }}
+            </span>
+          </template>
+
+          <template #cell-actions="{ row }">
+            <div class="actions">
+              <button type="button" class="action-icon edit" title="Sửa" @click="editStatus(row)">
+                <i class="fas fa-edit" aria-hidden="true"></i>
+              </button>
+            </div>
+          </template>
+        </DataGrid>
         </section>
       </section>
 
@@ -219,43 +193,30 @@
             <span>{{ connectionStatuses.length }} dòng</span>
           </header>
 
-          <div class="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>STT</th>
-                  <th>Mã trạng thái</th>
-                  <th>Tên trạng thái</th>
-                  <th>Mã màu</th>
-                  <th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="loading">
-                  <td colspan="5" class="empty">Đang tải dữ liệu...</td>
-                </tr>
-                <tr v-else-if="connectionStatuses.length === 0">
-                  <td colspan="5" class="empty">Chưa có trạng thái kết nối.</td>
-                </tr>
-                <tr v-for="(status, index) in connectionStatuses" v-else :key="status._id || status.connect_id">
-                  <td>{{ index + 1 }}</td>
-                  <td class="code">{{ status.connect_id }}</td>
-                  <td>{{ status.connect_desc }}</td>
-                  <td>
-                    <span class="status-color">
-                      <span :style="{ backgroundColor: displayConnectionStatusColor(status) }"></span>
-                      {{ displayConnectionStatusColor(status) }}
-                    </span>
-                  </td>
-                  <td class="actions">
-                    <button type="button" class="action-icon edit" title="Sửa" @click="editConnectionStatus(status)">
-                      <i class="fas fa-edit" aria-hidden="true"></i>
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <DataGrid
+            :columns="connectionStatusColumns"
+            :rows="connectionStatuses"
+            :loading="loading"
+            :row-key="connectionStatusRowKey"
+            storage-key="settings-connection-statuses"
+            loading-text="Đang tải dữ liệu..."
+            empty-text="Chưa có trạng thái kết nối."
+          >
+            <template #cell-color="{ row }">
+              <span class="status-color">
+                <span :style="{ backgroundColor: displayConnectionStatusColor(row) }"></span>
+                {{ displayConnectionStatusColor(row) }}
+              </span>
+            </template>
+
+            <template #cell-actions="{ row }">
+              <div class="actions">
+                <button type="button" class="action-icon edit" title="Sửa" @click="editConnectionStatus(row)">
+                  <i class="fas fa-edit" aria-hidden="true"></i>
+                </button>
+              </div>
+            </template>
+          </DataGrid>
         </section>
       </section>
     </section>
@@ -278,6 +239,7 @@ import {
   getMachineConnectionStatuses,
   updateMachineConnectionStatus
 } from '@/api/machineConnectionStatuses.api'
+import DataGrid from '@/components/grid/DataGrid.vue'
 import { getStatusById } from '@/constants/machine-status'
 
 const props = defineProps({
@@ -323,6 +285,46 @@ let messageTimer = null
 const editingLocation = computed(() => Boolean(locationForm._id))
 const editingStatus = computed(() => Boolean(statusForm._id))
 const editingConnectionStatus = computed(() => Boolean(connectionStatusForm._id))
+const locationColumns = [
+  { key: 'index', label: 'STT', value: locationIndex, width: 72, filterable: false },
+  { key: 'location_id', field: 'location_id', label: 'Mã location', width: 160, cellClass: 'code' },
+  { key: 'location_name', field: 'location_name', label: 'Tên location', width: 240 },
+  { key: 'actions', label: 'Thao tác', width: 120, filterable: false }
+]
+const statusColumns = [
+  { key: 'index', label: 'STT', value: statusIndex, width: 72, filterable: false },
+  { key: 'status_id', field: 'status_id', label: 'Mã trạng thái', width: 150, cellClass: 'code' },
+  { key: 'status_name', field: 'status_name', label: 'Tên trạng thái', width: 220 },
+  { key: 'color', label: 'Mã màu', value: displayStatusColor, width: 150 },
+  { key: 'actions', label: 'Thao tác', width: 110, filterable: false }
+]
+const connectionStatusColumns = [
+  { key: 'index', label: 'STT', value: connectionStatusIndex, width: 72, filterable: false },
+  { key: 'connect_id', field: 'connect_id', label: 'Mã trạng thái', width: 150, cellClass: 'code' },
+  { key: 'connect_desc', field: 'connect_desc', label: 'Tên trạng thái', width: 220 },
+  { key: 'color', label: 'Mã màu', value: displayConnectionStatusColor, width: 150 },
+  { key: 'actions', label: 'Thao tác', width: 110, filterable: false }
+]
+
+function locationIndex(location) {
+  return locations.value.indexOf(location) + 1
+}
+
+function statusIndex(status) {
+  return statuses.value.indexOf(status) + 1
+}
+
+function connectionStatusIndex(status) {
+  return connectionStatuses.value.indexOf(status) + 1
+}
+
+function statusRowKey(status) {
+  return status._id || status.status_id
+}
+
+function connectionStatusRowKey(status) {
+  return status._id || status.connect_id
+}
 
 // Hiện thông báo thành công tạm thời, tự ẩn sau 2.5s.
 function showMessage(text) {
@@ -796,6 +798,7 @@ th {
   font-weight: 800;
 }
 
+:deep(.code),
 .code {
   color: var(--primary-color);
   font-weight: 800;

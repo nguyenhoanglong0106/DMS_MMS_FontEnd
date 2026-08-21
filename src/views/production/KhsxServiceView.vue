@@ -111,65 +111,48 @@
           <span>{{ schedules.length }} lịch</span>
         </header>
 
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>STT</th>
-                <th>Tên lịch</th>
-                <th>BAQ</th>
-                <th>Tần suất</th>
-                <th>Giờ chạy</th>
-                <th>Trạng thái</th>
-                <th>Lần chạy gần nhất</th>
-                <th>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="loading">
-                <td colspan="8" class="empty">Đang tải dữ liệu...</td>
-              </tr>
-              <tr v-else-if="schedules.length === 0">
-                <td colspan="8" class="empty">Chưa có lịch đồng bộ nào.</td>
-              </tr>
-              <tr v-for="(schedule, index) in schedules" v-else :key="schedule._id">
-                <td>{{ index + 1 }}</td>
-                <td class="code" :title="schedule.name">{{ schedule.name }}</td>
-                <td :title="schedule.baqName">{{ schedule.baqName }}</td>
-                <td>{{ frequencyLabel(schedule) }}</td>
-                <td>{{ schedule.runHour }}h</td>
-                <td>
-                  <span class="badge" :class="schedule.enabled ? 'badge-on' : 'badge-off'">
-                    {{ schedule.enabled ? 'Đang bật' : 'Đã tắt' }}
-                  </span>
-                </td>
-                <td :title="schedule.lastRunMessage || ''">
-                  <span v-if="!schedule.lastRunAt">Chưa chạy</span>
-                  <span v-else class="badge" :class="schedule.lastRunStatus === 'error' ? 'badge-error' : 'badge-success'">
-                    {{ formatDateTime(schedule.lastRunAt) }}
-                  </span>
-                </td>
-                <td class="actions">
-                  <button
-                    type="button"
-                    class="action-icon run"
-                    title="Chạy ngay"
-                    :disabled="runningId === schedule._id"
-                    @click="runNow(schedule)"
-                  >
-                    <i class="fas fa-play" aria-hidden="true"></i>
-                  </button>
-                  <button type="button" class="action-icon edit" title="Sửa" @click="editSchedule(schedule)">
-                    <i class="fas fa-edit" aria-hidden="true"></i>
-                  </button>
-                  <button type="button" class="action-icon danger" title="Xóa" @click="removeSchedule(schedule)">
-                    <i class="fas fa-trash-alt" aria-hidden="true"></i>
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          :columns="scheduleColumns"
+          :rows="schedules"
+          :loading="loading"
+          row-key="_id"
+          storage-key="khsx-service-schedules"
+          loading-text="Đang tải dữ liệu..."
+          empty-text="Chưa có lịch đồng bộ nào."
+        >
+          <template #cell-enabled="{ row }">
+            <span class="badge" :class="row.enabled ? 'badge-on' : 'badge-off'">
+              {{ row.enabled ? 'Đang bật' : 'Đã tắt' }}
+            </span>
+          </template>
+
+          <template #cell-lastRun="{ row }">
+            <span v-if="!row.lastRunAt">Chưa chạy</span>
+            <span v-else class="badge" :class="row.lastRunStatus === 'error' ? 'badge-error' : 'badge-success'">
+              {{ formatDateTime(row.lastRunAt) }}
+            </span>
+          </template>
+
+          <template #cell-actions="{ row }">
+            <div class="actions">
+              <button
+                type="button"
+                class="action-icon run"
+                title="Chạy ngay"
+                :disabled="runningId === row._id"
+                @click="runNow(row)"
+              >
+                <i class="fas fa-play" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="action-icon edit" title="Sửa" @click="editSchedule(row)">
+                <i class="fas fa-edit" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="action-icon danger" title="Xóa" @click="removeSchedule(row)">
+                <i class="fas fa-trash-alt" aria-hidden="true"></i>
+              </button>
+            </div>
+          </template>
+        </DataGrid>
       </section>
     </section>
   </main>
@@ -184,6 +167,7 @@ import {
   runKhsxScheduleNow,
   updateKhsxSchedule
 } from '@/api/khsxSchedules.api'
+import DataGrid from '@/components/grid/DataGrid.vue'
 
 const WEEKDAYS = [
   { value: 1, label: 'Thứ 2' },
@@ -220,6 +204,28 @@ const form = reactive(emptyForm())
 let messageTimer = null
 
 const editingSchedule = computed(() => Boolean(form._id))
+const scheduleColumns = [
+  { key: 'index', label: 'STT', value: scheduleIndex, width: 72, filterable: false },
+  { key: 'name', field: 'name', label: 'Tên lịch', width: 180, cellClass: 'code' },
+  { key: 'baqName', field: 'baqName', label: 'BAQ', width: 150 },
+  { key: 'frequency', label: 'Tần suất', value: frequencyLabel, width: 240 },
+  { key: 'runHour', label: 'Giờ chạy', value: (schedule) => `${schedule.runHour}h`, width: 110 },
+  { key: 'enabled', label: 'Trạng thái', value: enabledLabel, width: 130 },
+  { key: 'lastRun', label: 'Lần chạy gần nhất', value: lastRunLabel, width: 190 },
+  { key: 'actions', label: 'Thao tác', width: 140, filterable: false }
+]
+
+function scheduleIndex(schedule) {
+  return schedules.value.indexOf(schedule) + 1
+}
+
+function enabledLabel(schedule) {
+  return schedule.enabled ? 'Đang bật' : 'Đã tắt'
+}
+
+function lastRunLabel(schedule) {
+  return schedule.lastRunAt ? formatDateTime(schedule.lastRunAt) : 'Chưa chạy'
+}
 
 // Hiện thông báo thành công tạm thời, tự ẩn sau 2.5s.
 function showMessage(text) {
@@ -633,6 +639,7 @@ th {
   font-weight: 800;
 }
 
+:deep(.code),
 .code {
   color: var(--primary-color);
   font-weight: 800;

@@ -53,42 +53,22 @@
             </button>
           </div>
         </header>
-        <div class="table-scroll log-table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Ngày</th>
-                <th>Thời gian</th>
-                <th>Trạng thái</th>
-                <th>l1</th>
-                <th>l2</th>
-                <th>l3</th>
-                <th>l4</th>
-                <th>Cycle Time (s)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="logs.length === 0">
-                <td colspan="8" class="empty">Chưa có log.</td>
-              </tr>
-              <tr v-for="log in logs" :key="log._id || log.createdAt || log.ms">
-                <td>{{ formatDateOnly(log.createdAt) }}</td>
-                <td>{{ formatTimeOnly(log.createdAt) }}</td>
-                <td>
-                  <span class="status-color">
-                    <span class="status-swatch" :style="{ backgroundColor: statusColor(logStatusId(log)) }"></span>
-                    {{ statusName(logStatusId(log)) }}
-                  </span>
-                </td>
-                <td>{{ signalValue(log, 'l1', 'I1') }}</td>
-                <td>{{ signalValue(log, 'l2', 'I2') }}</td>
-                <td>{{ signalValue(log, 'l3', 'I3') }}</td>
-                <td>{{ signalValue(log, 'l4', 'I4') }}</td>
-                <td>{{ formatCycleTimeSeconds(log) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          :columns="logColumns"
+          :rows="logs"
+          :row-key="logRowKey"
+          storage-key="machine-detail-logs"
+          empty-text="Chưa có log."
+          max-height="var(--detail-table-visible-height)"
+          sticky-header
+        >
+          <template #cell-status="{ row }">
+            <span class="status-color">
+              <span class="status-swatch" :style="{ backgroundColor: statusColor(logStatusId(row)) }"></span>
+              {{ statusName(logStatusId(row)) }}
+            </span>
+          </template>
+        </DataGrid>
       </article>
 
       <article class="panel">
@@ -110,44 +90,28 @@
             </button>
           </div>
         </header>
-        <div class="table-scroll history-table-scroll">
-          <table class="history-table">
-            <colgroup>
-              <col class="history-date-col" />
-              <col class="history-time-col" />
-              <col class="history-status-col" />
-              <col class="history-description-col" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>Ngày</th>
-                <th>Thời gian</th>
-                <th>Trạng thái</th>
-                <th>Mô tả</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="history.length === 0">
-                <td colspan="4" class="empty">Chưa có lịch sử vận hành.</td>
-              </tr>
-              <tr v-for="item in history" :key="item._id">
-                <td>{{ formatDateOnly(item.createdAt) }}</td>
-                <td>{{ formatTimeOnly(item.createdAt) }}</td>
-                <td>
-                  <span class="status-color">
-                    <span class="status-swatch" :style="{ backgroundColor: statusColor(item.status_id) }"></span>
-                    {{ statusName(item.status_id) }}
-                  </span>
-                </td>
-                <td>
-                  <span class="history-description" :title="item.description || '-'">
-                    {{ item.description || '-' }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          :columns="historyColumns"
+          :rows="history"
+          :row-key="historyRowKey"
+          storage-key="machine-detail-status-history"
+          empty-text="Chưa có lịch sử vận hành."
+          max-height="var(--detail-table-visible-height)"
+          sticky-header
+        >
+          <template #cell-status="{ row }">
+            <span class="status-color">
+              <span class="status-swatch" :style="{ backgroundColor: statusColor(row.status_id) }"></span>
+              {{ statusName(row.status_id) }}
+            </span>
+          </template>
+
+          <template #cell-description="{ row }">
+            <span class="history-description" :title="row.description || '-'">
+              {{ row.description || '-' }}
+            </span>
+          </template>
+        </DataGrid>
       </article>
 
       <article class="panel connection-panel">
@@ -174,44 +138,28 @@
           </div>
         </header>
         <p v-if="connectionHistoryError" class="panel-message">{{ connectionHistoryError }}</p>
-        <div class="table-scroll history-table-scroll">
-          <table class="connection-history-table">
-            <colgroup>
-              <col class="history-date-col" />
-              <col class="history-time-col" />
-              <col class="connection-status-col" />
-              <col class="connection-note-col" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>Ngày</th>
-                <th>Thời gian</th>
-                <th>Kết nối</th>
-                <th>Ghi chú</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="connectionHistory.length === 0">
-                <td colspan="4" class="empty">Chưa có lịch sử kết nối.</td>
-              </tr>
-              <tr v-for="item in connectionHistory" :key="item._id || item.createdAt || item.eventAt">
-                <td>{{ formatDateOnly(connectionEventTime(item)) }}</td>
-                <td>{{ formatTimeOnly(connectionEventTime(item)) }}</td>
-                <td>
-                  <span class="status-color">
-                    <span class="status-swatch" :style="{ backgroundColor: connectionColor(item) }"></span>
-                    {{ connectionName(item) }}
-                  </span>
-                </td>
-                <td>
-                  <span class="history-description" :title="connectionNote(item)">
-                    {{ connectionNote(item) }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <DataGrid
+          :columns="connectionHistoryColumns"
+          :rows="connectionHistory"
+          :row-key="connectionHistoryRowKey"
+          storage-key="machine-detail-connection-history"
+          empty-text="Chưa có lịch sử kết nối."
+          max-height="var(--detail-table-visible-height)"
+          sticky-header
+        >
+          <template #cell-connection="{ row }">
+            <span class="status-color">
+              <span class="status-swatch" :style="{ backgroundColor: connectionColor(row) }"></span>
+              {{ connectionName(row) }}
+            </span>
+          </template>
+
+          <template #cell-note="{ row }">
+            <span class="history-description" :title="connectionNote(row)">
+              {{ connectionNote(row) }}
+            </span>
+          </template>
+        </DataGrid>
       </article>
     </section>
     </FilterRailLayout>
@@ -228,6 +176,7 @@ import {
   getMachineStatusHistory
 } from '@/api/machines.api'
 import { getStatuses } from '@/api/statuses.api'
+import DataGrid from '@/components/grid/DataGrid.vue'
 import FilterRailLayout from '@/components/layout/FilterRailLayout.vue'
 import { NO_DATA_STATUS, isNoDataStatusId } from '@/constants/machine-status'
 import {
@@ -289,6 +238,40 @@ const canGoNextHistoryPage = computed(() => historyPagination.value.page < histo
 const connectionPaginationText = computed(() => paginationText(connectionPagination.value, 'mốc'))
 const canGoPreviousConnectionPage = computed(() => connectionPagination.value.page > 1)
 const canGoNextConnectionPage = computed(() => connectionPagination.value.page < connectionPagination.value.totalPages)
+const logColumns = [
+  { key: 'date', label: 'Ngày', value: (log) => formatDateOnly(log.createdAt), width: 112 },
+  { key: 'time', label: 'Thời gian', value: (log) => formatTimeOnly(log.createdAt), width: 106 },
+  { key: 'status', label: 'Trạng thái', value: (log) => statusName(logStatusId(log)), width: 150 },
+  { key: 'l1', label: 'l1', value: (log) => signalValue(log, 'l1', 'I1'), width: 70 },
+  { key: 'l2', label: 'l2', value: (log) => signalValue(log, 'l2', 'I2'), width: 70 },
+  { key: 'l3', label: 'l3', value: (log) => signalValue(log, 'l3', 'I3'), width: 70 },
+  { key: 'l4', label: 'l4', value: (log) => signalValue(log, 'l4', 'I4'), width: 70 },
+  { key: 'cycleTime', label: 'Cycle Time (s)', value: formatCycleTimeSeconds, width: 150 }
+]
+const historyColumns = [
+  { key: 'date', label: 'Ngày', value: (item) => formatDateOnly(item.createdAt), width: 112 },
+  { key: 'time', label: 'Thời gian', value: (item) => formatTimeOnly(item.createdAt), width: 106 },
+  { key: 'status', label: 'Trạng thái', value: (item) => statusName(item.status_id), width: 150 },
+  { key: 'description', label: 'Mô tả', value: (item) => item.description || '-', width: 320 }
+]
+const connectionHistoryColumns = [
+  { key: 'date', label: 'Ngày', value: (item) => formatDateOnly(connectionEventTime(item)), width: 112 },
+  { key: 'time', label: 'Thời gian', value: (item) => formatTimeOnly(connectionEventTime(item)), width: 106 },
+  { key: 'connection', label: 'Kết nối', value: connectionName, width: 150 },
+  { key: 'note', label: 'Ghi chú', value: connectionNote, width: 420 }
+]
+
+function logRowKey(log, index) {
+  return log._id || log.createdAt || log.ms || index
+}
+
+function historyRowKey(item, index) {
+  return item._id || item.createdAt || index
+}
+
+function connectionHistoryRowKey(item, index) {
+  return item._id || item.createdAt || item.eventAt || index
+}
 
 // Giới hạn bảng log chỉ hiển thị 50 log mới nhất, dù backend còn nhiều log cũ hơn.
 function cappedLogPagination(pagination) {
@@ -975,6 +958,10 @@ p {
 .panel-header span {
   color: var(--muted-color);
   font-size: 13px;
+}
+
+:deep(.data-grid-shell) {
+  margin-top: 8px;
 }
 
 .pagination-controls {

@@ -1,81 +1,53 @@
-﻿<template>
-  <div class="table-shell">
-    <table>
-      <colgroup>
-        <col class="col-index" />
-        <col class="col-code" />
-        <col class="col-name" />
-        <col class="col-location" />
-        <col class="col-signal" />
-        <col class="col-connection" />
-        <col class="col-actions" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>STT</th>
-          <th @click="$emit('sort', 'code')">Mã máy</th>
-          <th @click="$emit('sort', 'name')">Tên máy</th>
-          <th>Khu vực</th>
-          <th>Signal Keys</th>
-          <th>Kết nối</th>
-          <th>Thao tác</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-if="loading">
-          <td colspan="7" class="empty">Đang tải dữ liệu...</td>
-        </tr>
-        <tr v-else-if="machines.length === 0">
-          <td colspan="7" class="empty">Chưa có máy phù hợp.</td>
-        </tr>
-        <tr v-for="(machine, index) in machines" v-else :key="machine._id">
-          <td>{{ rowIndex(index) }}</td>
-          <td class="code" :title="machine.code">{{ machine.code }}</td>
-          <td :title="machine.name">{{ machine.name }}</td>
-          <td :title="machine.location?.location_name || '-'">{{ machine.location?.location_name || '-' }}</td>
-          <td :title="machine.signalKeys">{{ machine.signalKeys }}</td>
-          <td class="connection-cell">
-            <span
-              class="connection-badge"
-              :title="connectionName(machine)"
-            >
-              <span class="connection-dot" :style="{ backgroundColor: connectionColor(machine) }"></span>
-              <span class="connection-name">{{ connectionName(machine) }}</span>
-            </span>
-          </td>
-          <td class="actions">
-            <div class="action-list">
-              <RouterLink
-                :to="`/machines/${machine._id}`"
-                class="action-icon view"
-                title="Chi tiết"
-                aria-label="Chi tiết"
-              >
-                <i class="fas fa-eye" aria-hidden="true"></i>
-              </RouterLink>
-              <button
-                type="button"
-                class="action-icon edit"
-                title="Sửa"
-                aria-label="Sửa"
-                @click="$emit('edit', machine)"
-              >
-                <i class="fas fa-edit" aria-hidden="true"></i>
-              </button>
-              <button
-                type="button"
-                class="action-icon danger"
-                title="Xóa"
-                aria-label="Xóa"
-                @click="$emit('delete', machine)"
-              >
-                <i class="fas fa-trash-alt" aria-hidden="true"></i>
-              </button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+<template>
+  <div class="machine-table">
+    <DataGrid
+      :columns="columns"
+      :rows="tableRows"
+      :loading="loading"
+      row-key="_id"
+      storage-key="machine-registration"
+      loading-text="Đang tải dữ liệu..."
+      empty-text="Chưa có máy phù hợp."
+      @sort="$emit('sort', $event)"
+    >
+      <template #cell-connection="{ row }">
+        <span class="connection-badge" :title="row._connectionName">
+          <span class="connection-dot" :style="{ backgroundColor: row._connectionColor }"></span>
+          <span class="connection-name">{{ row._connectionName }}</span>
+        </span>
+      </template>
+
+      <template #cell-actions="{ row }">
+        <div class="action-list">
+          <RouterLink
+            :to="`/machines/${row._id}`"
+            class="action-icon view"
+            title="Chi tiết"
+            aria-label="Chi tiết"
+          >
+            <i class="fas fa-eye" aria-hidden="true"></i>
+          </RouterLink>
+          <button
+            type="button"
+            class="action-icon edit"
+            title="Sửa"
+            aria-label="Sửa"
+            @click="$emit('edit', row._source)"
+          >
+            <i class="fas fa-edit" aria-hidden="true"></i>
+          </button>
+          <button
+            type="button"
+            class="action-icon danger"
+            title="Xóa"
+            aria-label="Xóa"
+            @click="$emit('delete', row._source)"
+          >
+            <i class="fas fa-trash-alt" aria-hidden="true"></i>
+          </button>
+        </div>
+      </template>
+    </DataGrid>
 
     <footer class="pagination">
       <span>Trang {{ pagination.page }} / {{ pagination.totalPages || 1 }} - {{ pagination.total }} máy</span>
@@ -96,6 +68,9 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import DataGrid from '@/components/grid/DataGrid.vue'
+
 const props = defineProps({
   machines: {
     type: Array,
@@ -119,6 +94,27 @@ defineEmits(['edit', 'delete', 'page-change', 'sort'])
 
 const ONLINE_CONNECT_ID = '1'
 const OFFLINE_CONNECT_ID = '2'
+
+const columns = [
+  { key: 'index', field: '_rowIndex', label: 'STT', width: 72, filterable: false },
+  { key: 'code', field: 'code', label: 'Mã máy', width: 170, cellClass: 'code', sortable: true, sortKey: 'code' },
+  { key: 'name', field: 'name', label: 'Tên máy', width: 250, sortable: true, sortKey: 'name' },
+  { key: 'location', field: '_locationName', label: 'Khu vực', width: 180 },
+  { key: 'signalKeys', field: 'signalKeys', label: 'Signal Keys', width: 250 },
+  { key: 'connection', field: '_connectionName', label: 'Kết nối', width: 190 },
+  { key: 'actions', label: 'Thao tác', width: 170, filterable: false, cellClass: 'actions-cell' }
+]
+
+const tableRows = computed(() =>
+  props.machines.map((machine, index) => ({
+    ...machine,
+    _source: machine,
+    _rowIndex: rowIndex(index),
+    _locationName: machine.location?.location_name || '-',
+    _connectionName: connectionName(machine),
+    _connectionColor: connectionColor(machine)
+  }))
+)
 
 // Tính STT theo trang hiện tại của bảng.
 function rowIndex(index) {
@@ -162,92 +158,18 @@ function connectionColor(machine) {
 </script>
 
 <style scoped>
-.table-shell {
-  overflow: auto;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--surface-bg);
-  scrollbar-gutter: stable;
+.machine-table {
+  display: grid;
 }
 
-table {
-  width: 100%;
-  min-width: 1080px;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: 14px;
+:deep(.data-grid-shell) {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
-.col-index {
-  width: 72px;
-}
-
-.col-code {
-  width: 170px;
-}
-
-.col-name {
-  width: 250px;
-}
-
-.col-location {
-  width: 180px;
-}
-
-.col-signal {
-  width: 250px;
-}
-
-.col-connection {
-  width: 190px;
-}
-
-.col-actions {
-  width: 170px;
-}
-
-th,
-td {
-  padding: 12px;
-  border-bottom: 1px solid var(--border-color);
-  text-align: left;
-  vertical-align: middle;
-}
-
-td:not(.actions):not(.connection-cell) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-th {
-  background: var(--table-header-bg);
-  color: var(--text-color);
-  font-weight: 800;
-}
-
-th:nth-child(2),
-th:nth-child(3) {
-  cursor: pointer;
-}
-
-.code {
+:deep(.code) {
   color: var(--primary-color);
   font-weight: 800;
-}
-
-.empty {
-  padding: 34px;
-  color: var(--muted-color);
-  text-align: center;
-}
-
-.actions {
-  white-space: nowrap;
-}
-
-.connection-cell {
-  white-space: nowrap;
 }
 
 .connection-badge {
@@ -280,8 +202,7 @@ th:nth-child(3) {
   min-height: 36px;
 }
 
-.actions button,
-.actions a,
+.action-icon,
 .pagination button {
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -292,54 +213,58 @@ th:nth-child(3) {
   text-decoration: none;
 }
 
-.actions .action-icon {
+.action-icon {
+  display: inline-flex;
   flex: 0 0 34px;
   width: 34px;
   height: 34px;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-.actions .action-icon:hover {
+.action-icon:hover {
   border-color: currentColor;
 }
 
-.actions .view {
+.view {
   border-color: color-mix(in srgb, var(--primary-color) 32%, var(--border-color));
   background: color-mix(in srgb, var(--primary-color) 10%, var(--surface-bg));
   color: var(--primary-color);
 }
 
-.actions .edit {
+.edit {
   border-color: color-mix(in srgb, #d97706 36%, var(--border-color));
   background: color-mix(in srgb, #d97706 12%, var(--surface-bg));
   color: #d97706;
 }
 
-.actions .danger {
+.danger {
   border-color: color-mix(in srgb, var(--error-text) 36%, var(--border-color));
   background: var(--error-bg);
   color: var(--error-text);
-}
-
-.pagination button {
-  padding: 7px 10px;
 }
 
 .pagination {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  border: 1px solid var(--border-color);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
   padding: 12px;
+  background: var(--surface-bg);
   color: var(--muted-color);
 }
 
 .pagination div {
   display: flex;
   gap: 8px;
+}
+
+.pagination button {
+  padding: 7px 10px;
 }
 
 .pagination button:disabled {

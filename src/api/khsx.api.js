@@ -7,8 +7,10 @@ function buildKhsxQuery(params) {
   )
 }
 
-// Gọi API lấy dữ liệu kế hoạch sản xuất (KHSX) từ BAQ Epicor DMS_GetKHSX, qua proxy backend.
-// params: { startDate: 'YYYY-MM-DD', dueDate: 'YYYY-MM-DD' }
+// Lấy dữ liệu KHSX theo 1 trong 2 kiểu lọc ngày (có thể kết hợp cả 2, backend tự AND lại):
+// - snapshotStartDate/snapshotEndDate: theo ngày nhập (snapshot), không nhầm với StartDate/DueDate của operation.
+// - jobStartDateFrom/jobStartDateTo: theo JobHead_StartDate.
+// params: { snapshotStartDate, snapshotEndDate, jobStartDateFrom, jobStartDateTo } (định dạng 'YYYY-MM-DD')
 export function getKhsx(params = {}) {
   return apiClient.get('/khsx', { params: buildKhsxQuery(params) })
 }

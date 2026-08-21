@@ -124,32 +124,20 @@
         </div>
       </header>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Ngày</th>
-            <th>Thời gian</th>
-            <th>Trạng thái</th>
-            <th>Mô tả</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="displayMarkers.length === 0">
-            <td colspan="4" class="empty">Chưa có lịch sử trạng thái trong khoảng thời gian.</td>
-          </tr>
-          <tr v-for="marker in paginatedMarkers" :key="marker._id">
-            <td>{{ formatMarkerDate(marker.createdAt) }}</td>
-            <td>{{ formatTimeOnly(marker.createdAt) }}</td>
-            <td>
-              <span class="status-label">
-                <span class="status-dot" :style="{ backgroundColor: marker.color }"></span>
-                {{ marker.status_name }}
-              </span>
-            </td>
-            <td>{{ marker.description || '-' }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <DataGrid
+        :columns="eventColumns"
+        :rows="paginatedMarkers"
+        :row-key="markerRowKey"
+        storage-key="machine-status-timeline-events"
+        empty-text="Chưa có lịch sử trạng thái trong khoảng thời gian."
+      >
+        <template #cell-status="{ row }">
+          <span class="status-label">
+            <span class="status-dot" :style="{ backgroundColor: row.color }"></span>
+            {{ row.status_name }}
+          </span>
+        </template>
+      </DataGrid>
     </section>
     </FilterRailLayout>
   </main>
@@ -159,6 +147,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getLocations } from '@/api/locations.api'
 import { getMachines, getMachineStatusTimeline } from '@/api/machines.api'
+import DataGrid from '@/components/grid/DataGrid.vue'
 import FilterRailLayout from '@/components/layout/FilterRailLayout.vue'
 import { isNoDataStatusId } from '@/constants/machine-status'
 import {
@@ -199,6 +188,16 @@ const VIEWPORT_MIN_MS = 5 * MINUTE_MS
 const currentTime = ref(new Date())
 let clockTimer = null
 let dragState = null
+const eventColumns = [
+  { key: 'date', label: 'Ngày', value: (marker) => formatMarkerDate(marker.createdAt), width: 130 },
+  { key: 'time', label: 'Thời gian', value: (marker) => formatTimeOnly(marker.createdAt), width: 120 },
+  { key: 'status', label: 'Trạng thái', value: (marker) => marker.status_name || '-', width: 180 },
+  { key: 'description', label: 'Mô tả', value: (marker) => marker.description || '-', width: 320 }
+]
+
+function markerRowKey(marker, index) {
+  return marker._id || `${marker.createdAt || marker.updatedAt || 'marker'}-${index}`
+}
 
 const selectedMachine = computed(() => machines.value.find((machine) => machine._id === selectedMachineId.value) || null)
 const timelineSubtitle = computed(() => {

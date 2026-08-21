@@ -27,30 +27,20 @@
 
       <p v-if="error" class="error">{{ error }}</p>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Thời gian</th>
-          <th>Status</th>
-          <th>Mô tả</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-if="history.length === 0">
-          <td colspan="3" class="empty">Chưa có dữ liệu.</td>
-        </tr>
-        <tr v-for="item in history" :key="item._id">
-          <td>{{ formatDate(item.createdAt) }}</td>
-          <td>
-            <span class="status-color">
-              <span class="status-swatch" :style="{ backgroundColor: statusColor(item.status_id) }"></span>
-              {{ statusName(item.status_id) }}
-            </span>
-          </td>
-          <td>{{ item.description || '-' }}</td>
-        </tr>
-      </tbody>
-    </table>
+      <DataGrid
+        :columns="historyColumns"
+        :rows="history"
+        row-key="_id"
+        storage-key="machine-status-history"
+        empty-text="Chưa có dữ liệu."
+      >
+        <template #cell-status="{ row }">
+          <span class="status-color">
+            <span class="status-swatch" :style="{ backgroundColor: statusColor(row.status_id) }"></span>
+            {{ statusName(row.status_id) }}
+          </span>
+        </template>
+      </DataGrid>
     </FilterRailLayout>
   </main>
 </template>
@@ -60,6 +50,7 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getMachineStatusHistory } from '@/api/machines.api'
 import { getStatuses } from '@/api/statuses.api'
+import DataGrid from '@/components/grid/DataGrid.vue'
 import FilterRailLayout from '@/components/layout/FilterRailLayout.vue'
 import { NO_DATA_STATUS, isNoDataStatusId } from '@/constants/machine-status'
 import { formatDateTime as formatDate } from '@/utils/date-format'
@@ -73,6 +64,11 @@ const filters = reactive({
   to: '',
   status_id: ''
 })
+const historyColumns = [
+  { key: 'createdAt', field: 'createdAt', label: 'Thời gian', width: 180, format: formatDate },
+  { key: 'status', label: 'Status', value: (item) => statusName(item.status_id), width: 180 },
+  { key: 'description', label: 'Mô tả', value: (item) => item.description || '-', width: 320 }
+]
 
 // Tải lịch sử đổi trạng thái theo filter thời gian/trạng thái.
 async function loadHistory() {
