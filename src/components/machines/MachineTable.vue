@@ -8,7 +8,6 @@
       storage-key="machine-registration"
       loading-text="Đang tải dữ liệu..."
       empty-text="Chưa có máy phù hợp."
-      @sort="$emit('sort', $event)"
     >
       <template #cell-connection="{ row }">
         <span class="connection-badge" :title="row._connectionName">
@@ -90,7 +89,7 @@ const props = defineProps({
   }
 })
 
-defineEmits(['edit', 'delete', 'page-change', 'sort'])
+defineEmits(['edit', 'delete', 'page-change'])
 
 const ONLINE_CONNECT_ID = '1'
 const OFFLINE_CONNECT_ID = '2'
@@ -102,7 +101,7 @@ const columns = [
   { key: 'location', field: '_locationName', label: 'Khu vực', width: 180 },
   { key: 'signalKeys', field: 'signalKeys', label: 'Signal Keys', width: 250 },
   { key: 'connection', field: '_connectionName', label: 'Kết nối', width: 190 },
-  { key: 'actions', label: 'Thao tác', width: 170, filterable: false, cellClass: 'actions-cell' }
+  { key: 'actions', label: 'Thao tác', width: 170, filterable: false, sortable: false, cellClass: 'actions-cell' }
 ]
 
 const tableRows = computed(() =>

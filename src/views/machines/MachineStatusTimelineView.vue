@@ -22,11 +22,67 @@
         </label>
         <label class="dock-field">
           <span>Từ ngày</span>
-          <input v-model="fromDate" type="date" @change="handleTimelineFilterChange" />
+          <div class="date-input">
+            <input
+              v-model.trim="fromDate"
+              type="text"
+              inputmode="numeric"
+              placeholder="dd/mm/yyyy"
+              @blur="normalizeDateInput('fromDate')"
+              @change="handleTimelineFilterChange"
+              @keyup.enter="handleTimelineFilterChange"
+            />
+            <button
+              type="button"
+              class="date-picker-button"
+              title="Chọn ngày"
+              aria-label="Chọn từ ngày"
+              @click="openDatePicker('fromDate')"
+            >
+              <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+            </button>
+            <input
+              :ref="(el) => setDatePickerRef('fromDate', el)"
+              class="native-date-picker"
+              type="date"
+              :value="datePickerValue(fromDate)"
+              tabindex="-1"
+              aria-hidden="true"
+              @change="selectDateFromPicker('fromDate', $event.target.value)"
+            />
+          </div>
         </label>
         <label class="dock-field">
           <span>Đến ngày</span>
-          <input v-model="toDate" type="date" @change="handleTimelineFilterChange" />
+          <div class="date-input">
+            <input
+              v-model.trim="toDate"
+              type="text"
+              inputmode="numeric"
+              placeholder="dd/mm/yyyy"
+              @blur="normalizeDateInput('toDate')"
+              @change="handleTimelineFilterChange"
+              @keyup.enter="handleTimelineFilterChange"
+            />
+            <button
+              type="button"
+              class="date-picker-button"
+              title="Chọn ngày"
+              aria-label="Chọn đến ngày"
+              @click="openDatePicker('toDate')"
+            >
+              <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+            </button>
+            <input
+              :ref="(el) => setDatePickerRef('toDate', el)"
+              class="native-date-picker"
+              type="date"
+              :value="datePickerValue(toDate)"
+              tabindex="-1"
+              aria-hidden="true"
+              @change="selectDateFromPicker('toDate', $event.target.value)"
+            />
+          </div>
         </label>
 
         <div class="dock-section">
@@ -170,6 +226,7 @@ const locations = ref([])
 const selectedLocationId = ref('')
 const selectedMachineId = ref('')
 const todayDateValue = todayInputValue()
+const datePickerRefs = {}
 const fromDate = ref(todayDateValue)
 const toDate = ref(todayDateValue)
 const timeline = ref(null)
@@ -345,34 +402,78 @@ function changeEventPage(page) {
   eventPage.value = page
 }
 
-// Ngày hiện tại cho input date.
+// Ngày hiện tại cho input ngày dạng người dùng nhập tay.
 function todayInputValue() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const date = String(now.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${date}`
+  return formatDateForInput(new Date())
 }
 
-function isValidDateInput(value) {
-  if (!value) {
-    return false
-  }
+function parseDateInput(value) {
+  const text = String(value || '').trim()
 
-  const date = new Date(`${value}T00:00:00`)
-
-  return !Number.isNaN(date.getTime())
-}
-
-function orderedDateValues(fromValue = fromDate.value, toValue = toDate.value) {
-  if (!isValidDateInput(fromValue) || !isValidDateInput(toValue)) {
+  if (!text) {
     return null
   }
 
-  return fromValue <= toValue
-    ? { from: fromValue, to: toValue }
-    : { from: toValue, to: fromValue }
+  const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/)
+  const localMatch = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
+  const match = isoMatch || localMatch
+
+  if (!match) {
+    return null
+  }
+
+  const year = Number(isoMatch ? match[1] : match[3])
+  const month = Number(match[2])
+  const day = Number(isoMatch ? match[3] : match[1])
+  const date = new Date(year, month - 1, day)
+
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null
+  }
+
+  return date
+}
+
+function formatDateForInput(date) {
+  return [
+    String(date.getDate()).padStart(2, '0'),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    date.getFullYear()
+  ].join('/')
+}
+
+function formatDateForApi(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-')
+}
+
+function isValidDateInput(value) {
+  return Boolean(parseDateInput(value))
+}
+
+function orderedDateValues(fromValue = fromDate.value, toValue = toDate.value) {
+  const from = parseDateInput(fromValue)
+  const to = parseDateInput(toValue)
+
+  if (!from || !to) {
+    return null
+  }
+
+  return from.getTime() <= to.getTime()
+    ? { from: formatDateForApi(from), to: formatDateForApi(to) }
+    : { from: formatDateForApi(to), to: formatDateForApi(from) }
+}
+
+function normalizeDateInput(key) {
+  const target = key === 'fromDate' ? fromDate : toDate
+  const date = parseDateInput(target.value)
+
+  if (date) {
+    target.value = formatDateForInput(date)
+  }
 }
 
 function normalizeDateRangeInputs() {
@@ -390,8 +491,51 @@ function normalizeDateRangeInputs() {
     return
   }
 
-  fromDate.value = range.from
-  toDate.value = range.to
+  fromDate.value = formatDateForInput(parseDateInput(range.from))
+  toDate.value = formatDateForInput(parseDateInput(range.to))
+}
+
+function setDatePickerRef(key, element) {
+  if (element) {
+    datePickerRefs[key] = element
+  } else {
+    delete datePickerRefs[key]
+  }
+}
+
+function datePickerValue(value) {
+  const date = parseDateInput(value)
+  return date ? formatDateForApi(date) : ''
+}
+
+async function selectDateFromPicker(key, value) {
+  const date = parseDateInput(value)
+
+  if (key === 'fromDate') {
+    fromDate.value = date ? formatDateForInput(date) : ''
+  } else {
+    toDate.value = date ? formatDateForInput(date) : ''
+  }
+
+  await handleTimelineFilterChange()
+}
+
+function openDatePicker(key) {
+  const picker = datePickerRefs[key]
+
+  if (!picker) {
+    return
+  }
+
+  picker.value = datePickerValue(key === 'fromDate' ? fromDate.value : toDate.value)
+
+  if (typeof picker.showPicker === 'function') {
+    picker.showPicker()
+    return
+  }
+
+  picker.focus()
+  picker.click()
 }
 
 // Tạo khoảng từ 00:00 ngày bắt đầu đến 24:00 ngày kết thúc.
@@ -908,9 +1052,7 @@ function isSelectedRangeEvent(event) {
 async function loadMachines() {
   const response = await getMachines({
     location_id: selectedLocationId.value,
-    limit: MACHINE_DROPDOWN_LIMIT,
-    sortBy: 'code',
-    sortOrder: 'asc'
+    limit: MACHINE_DROPDOWN_LIMIT
   })
   machines.value = response.data || []
 
@@ -1359,6 +1501,48 @@ td:first-child {
 .empty,
 .error {
   color: var(--error-text);
+}
+
+.date-input {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+}
+
+.date-input > input[type='text'] {
+  width: 100%;
+  padding-right: 38px;
+}
+
+.date-picker-button {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-color);
+  cursor: pointer;
+}
+
+.date-picker-button:hover,
+.date-picker-button:focus-visible {
+  color: var(--primary-color);
+  outline: none;
+}
+
+.native-date-picker {
+  position: absolute;
+  right: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 @media (max-width: 900px) {

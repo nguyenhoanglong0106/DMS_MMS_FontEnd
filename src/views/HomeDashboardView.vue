@@ -98,9 +98,10 @@
               class="machine-chip"
               :to="`/machines/${machine._id}`"
               :style="{ borderColor: machineStatusColor(machine) }"
-              :title="`${machine.name} - ${machineStatusName(machine)} - Kết nối: ${machineConnectionName(machine)}`"
+              :title="`${machine.code || ''} - ${machine.name} - ${machineStatusName(machine)} - Kết nối: ${machineConnectionName(machine)}`"
             >
               <div class="machine-chip-top">
+                <strong class="machine-code" :title="machine.code">{{ machine.code || '-' }}</strong>
                 <span class="machine-connection-badge" :style="{ backgroundColor: machineConnectionColor(machine) }">{{ machineConnectionName(machine) }}</span>
               </div>
               <div class="machine-chip-bottom">
@@ -763,7 +764,7 @@ h3 {
 .machine-chip-top {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 6px;
 }
 
@@ -772,6 +773,19 @@ h3 {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+.machine-code {
+  display: inline-block;
+  overflow: hidden;
+  max-width: 62px;
+  min-width: 0;
+  color: #000000;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .machine-status-dot {
@@ -800,7 +814,7 @@ h3 {
   white-space: nowrap;
 }
 
-.machine-chip strong {
+.machine-chip-bottom strong {
   font-size: 15px;
   line-height: 1.1;
 }

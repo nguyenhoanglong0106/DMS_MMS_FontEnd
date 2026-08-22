@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <main class="machine-page">
     <FilterRailLayout title="Đăng ký máy" :subtitle="registrationSummaryText" storage-key="machine-registration">
       <template #dock>
@@ -27,7 +27,6 @@
         @edit="openEditModal"
         @delete="deleteTarget = $event"
         @page-change="changePage"
-        @sort="changeSort"
       />
     </FilterRailLayout>
 
@@ -134,9 +133,7 @@ async function loadMachinesForValidation() {
     do {
       const response = await getMachines({
         page,
-        limit: VALIDATION_PAGE_SIZE,
-        sortBy: 'code',
-        sortOrder: 'asc'
+        limit: VALIDATION_PAGE_SIZE
       })
 
       machines.push(...(response.data || []))
@@ -250,12 +247,6 @@ async function changePage(page) {
   await machineStore.fetchMachines()
 }
 
-// Đổi cột sort và đảo chiều sort hiện tại.
-async function changeSort(sortBy) {
-  machineStore.filters.sortBy = sortBy
-  machineStore.filters.sortOrder = machineStore.filters.sortOrder === 'asc' ? 'desc' : 'asc'
-  await machineStore.fetchMachines()
-}
 
 function handleMachineConnectionUpdated(event) {
   machineStore.applyMachineConnectionUpdate(event)

@@ -256,9 +256,7 @@ export const useMachineStore = defineStore('machine', {
       location_id: '',
       status_id: '',
       noData: '',
-      abnormal: '',
-      sortBy: 'code',
-      sortOrder: 'asc'
+      abnormal: ''
     },
     statusCount: {
       total: 0,
@@ -580,9 +578,7 @@ export const useMachineStore = defineStore('machine', {
         location_id: '',
         status_id: '',
         noData: '',
-        abnormal: '',
-        sortBy: 'code',
-        sortOrder: 'asc'
+        abnormal: ''
       }
       this.pagination.page = 1
     }

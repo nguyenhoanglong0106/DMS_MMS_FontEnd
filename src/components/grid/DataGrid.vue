@@ -1,31 +1,79 @@
 <template>
   <div class="data-grid-shell" :class="{ 'is-sticky-header': stickyHeader }" :style="shellStyle">
+    <div v-if="columnChooser" class="grid-toolbar">
+      <button
+        type="button"
+        class="grid-tool-button"
+        :class="{ 'is-active': columnMenuOpen }"
+        title="Chọn cột"
+        aria-label="Chọn cột"
+        :aria-expanded="columnMenuOpen"
+        @click.stop="toggleColumnMenu"
+      >
+        <i class="fas fa-columns" aria-hidden="true"></i>
+      </button>
+
+      <div v-if="columnMenuOpen" class="column-menu" @click.stop>
+        <div class="column-menu-title">Hiển thị cột</div>
+        <div class="column-menu-list" role="group" aria-label="Danh sách cột hiển thị">
+          <label v-for="column in orderedColumns" :key="column.key" class="column-menu-option">
+            <input
+              type="checkbox"
+              :checked="isColumnVisible(column)"
+              :disabled="isColumnVisibilityLocked(column)"
+              @change="toggleColumnVisibility(column, $event.target.checked)"
+            />
+            <span :title="column.label">{{ column.label }}</span>
+          </label>
+        </div>
+        <div class="column-menu-footer">
+          <button type="button" @click="resetColumnSettings">Mặc định</button>
+        </div>
+      </div>
+    </div>
+
     <table :style="tableStyle">
       <colgroup>
-        <col v-for="column in columns" :key="column.key" :style="columnStyle(column)" />
+        <col v-for="column in visibleColumns" :key="column.key" :style="columnStyle(column)" />
       </colgroup>
 
       <thead>
         <tr class="heading-row">
           <th
-            v-for="column in columns"
+            v-for="column in visibleColumns"
             :key="column.key"
             scope="col"
+            :draggable="isColumnReorderable(column)"
+            :aria-sort="ariaSort(column)"
             :class="{
               'is-filtered': isColumnFiltered(column),
-              'is-filter-open': isFilterPanelOpen(column)
+              'is-filter-open': isFilterPanelOpen(column),
+              'has-filter': filterable && column.filterable !== false,
+              'has-sort': isColumnSortable(column),
+              'is-sorted': isColumnSorted(column),
+              'is-reorderable': isColumnReorderable(column),
+              'is-dragging': dragColumnKey === column.key,
+              'is-drag-over': dragOverColumnKey === column.key
             }"
+            @dragstart="startColumnDrag($event, column)"
+            @dragover.prevent="dragOverColumn($event, column)"
+            @dragleave="leaveColumnDrag(column)"
+            @drop.prevent="dropColumn($event, column)"
+            @dragend="stopColumnDrag"
           >
             <button
-              v-if="column.sortable"
+              v-if="isColumnSortable(column)"
               type="button"
               class="heading-label heading-sort-button"
-              :title="column.label"
-              @click="emit('sort', column.sortKey || column.key)"
+              :title="sortTitle(column)"
+              @click="changeSort(column)"
             >
-              {{ column.label }}
+              <span class="heading-label-text">{{ column.label }}</span>
+              <span class="sort-indicator" aria-hidden="true">{{ sortIndicator(column) }}</span>
             </button>
-            <span v-else class="heading-label" :title="column.label">{{ column.label }}</span>
+            <span v-else class="heading-label" :title="column.label">
+              <span class="heading-label-text">{{ column.label }}</span>
+            </span>
             <button
               v-if="filterable && column.filterable !== false"
               class="filter-button"
@@ -103,21 +151,21 @@
 
       <tbody>
         <tr v-if="loading">
-          <td :colspan="columns.length" class="empty">{{ loadingText }}</td>
+          <td :colspan="visibleColumnCount" class="empty">{{ loadingText }}</td>
         </tr>
-        <tr v-else-if="filteredRows.length === 0">
-          <td :colspan="columns.length" class="empty">
+        <tr v-else-if="sortedRows.length === 0">
+          <td :colspan="visibleColumnCount" class="empty">
             {{ rows.length === 0 ? emptyText : noFilterResultText }}
           </td>
         </tr>
         <tr
-          v-for="(row, rowIndex) in filteredRows"
+          v-for="(row, rowIndex) in displayedRows"
           v-else
           :key="resolveRowKey(row, rowIndex)"
           :class="rowClassFor(row, rowIndex)"
         >
           <td
-            v-for="column in columns"
+            v-for="column in visibleColumns"
             :key="column.key"
             :class="cellClassFor(row, column)"
             :title="cellTitle(row, column)"
@@ -174,6 +222,18 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  sortable: {
+    type: Boolean,
+    default: true
+  },
+  columnChooser: {
+    type: Boolean,
+    default: true
+  },
+  columnReorder: {
+    type: Boolean,
+    default: true
+  },
   loadingText: {
     type: String,
     default: 'Đang tải dữ liệu...'
@@ -197,43 +257,101 @@ const props = defineProps({
   rowClass: {
     type: [String, Array, Object, Function],
     default: ''
+  },
+  page: {
+    type: Number,
+    default: 0
+  },
+  limit: {
+    type: Number,
+    default: 0
   }
 })
 
 const filterText = {
-  filterColumn: 'L\u1ecdc c\u1ed9t',
-  searchValuesInColumn: 'T\u00ecm gi\u00e1 tr\u1ecb trong c\u1ed9t',
-  searchPlaceholder: 'T\u00ecm ki\u1ebfm...',
-  selectAll: 'Ch\u1ecdn t\u1ea5t c\u1ea3',
-  unselect: 'B\u1ecf ch\u1ecdn',
-  clearFilter: 'X\u00f3a l\u1ecdc',
-  values: 'gi\u00e1 tr\u1ecb',
-  filterValues: 'Gi\u00e1 tr\u1ecb l\u1ecdc c\u1ed9t',
-  noValues: 'Kh\u00f4ng c\u00f3 gi\u00e1 tr\u1ecb.'
+  filterColumn: 'Lọc cột',
+  searchValuesInColumn: 'Tìm giá trị trong cột',
+  searchPlaceholder: 'Tìm kiếm...',
+  selectAll: 'Chọn tất cả',
+  unselect: 'Bỏ chọn',
+  clearFilter: 'Xóa lọc',
+  values: 'giá trị',
+  filterValues: 'Giá trị lọc cột',
+  noValues: 'Không có giá trị.'
 }
 
-const emit = defineEmits(['filtered-count', 'sort'])
+const emit = defineEmits(['filtered-count'])
 const valueFilters = reactive({})
 const columnWidths = reactive({})
+const columnOrder = ref([])
+const hiddenColumnKeys = ref(new Set())
 const activeFilterKey = ref('')
 const filterSearch = ref('')
 const draftSelectedValues = ref(new Set())
+const columnMenuOpen = ref(false)
+const dragColumnKey = ref('')
+const dragOverColumnKey = ref('')
+const clientSort = reactive({
+  key: '',
+  order: ''
+})
 let activeResize = null
 let filterListenersBound = false
+let columnMenuListenersBound = false
 
 const widthStorageKey = computed(() => (props.storageKey ? `data-grid:${props.storageKey}:column-widths` : ''))
+const columnSettingsStorageKey = computed(() => (props.storageKey ? `data-grid:${props.storageKey}:columns` : ''))
+const columnByKey = computed(() => new Map(props.columns.map((column) => [column.key, column])))
+const orderedColumns = computed(() => {
+  const order = normalizeColumnOrder(columnOrder.value, new Set(props.columns.map((column) => column.key)))
+
+  return order.map((key) => columnByKey.value.get(key)).filter(Boolean)
+})
+const visibleColumns = computed(() => {
+  const visible = orderedColumns.value.filter((column) => !hiddenColumnKeys.value.has(column.key))
+
+  return visible.length > 0 ? visible : orderedColumns.value.slice(0, 1)
+})
+const visibleColumnCount = computed(() => Math.max(visibleColumns.value.length, 1))
 const filterCriteria = computed(() => {
   const filters = {}
+  const visibleKeys = new Set(visibleColumns.value.map((column) => column.key))
 
   for (const [key, selected] of Object.entries(valueFilters)) {
-    filters[key] = { type: 'values', selected }
+    if (visibleKeys.has(key)) {
+      filters[key] = { type: 'values', selected }
+    }
   }
 
   return filters
 })
-const filteredRows = computed(() => filterGridRows(props.rows, props.columns, filterCriteria.value))
+const filteredRows = computed(() => filterGridRows(props.rows, visibleColumns.value, filterCriteria.value))
+const activeSortKey = computed(() => clientSort.key)
+const activeSortOrder = computed(() => clientSort.order)
+const activeSortColumn = computed(
+  () => props.columns.find((column) => sortKeyFor(column) === activeSortKey.value) || null
+)
+const sortedRows = computed(() => {
+  if (!activeSortColumn.value || !activeSortOrder.value) {
+    return filteredRows.value
+  }
+
+  return stableSortRows(filteredRows.value, activeSortColumn.value, activeSortOrder.value)
+})
+const displayedRows = computed(() => {
+  const page = Number(props.page) || 0
+  const limit = Number(props.limit) || 0
+
+  if (page < 1 || limit < 1) {
+    return sortedRows.value
+  }
+
+  const startIndex = (page - 1) * limit
+
+  return sortedRows.value.slice(startIndex, startIndex + limit)
+})
 const activeFilterColumn = computed(
-  () => props.columns.find((column) => column.key === activeFilterKey.value) || null
+  () => visibleColumns.value.find((column) => column.key === activeFilterKey.value) || null
 )
 const filterOptions = computed(() => {
   if (!activeFilterColumn.value) {
@@ -242,7 +360,7 @@ const filterOptions = computed(() => {
 
   return getGridColumnValueOptions(
     props.rows,
-    props.columns,
+    visibleColumns.value,
     filterCriteria.value,
     activeFilterColumn.value.key
   )
@@ -268,21 +386,74 @@ const selectedFilterCount = computed(() => {
 
   return count
 })
-
-function readStoredWidths() {
-  if (!widthStorageKey.value || typeof window === 'undefined') {
+const tableStyle = computed(() => ({
+  width: `${visibleColumns.value.reduce((total, column) => total + (columnWidths[column.key] || 0), 0)}px`
+}))
+const shellStyle = computed(() => {
+  if (!props.maxHeight) {
     return {}
+  }
+
+  return {
+    maxHeight: typeof props.maxHeight === 'number' ? `${props.maxHeight}px` : props.maxHeight
+  }
+})
+
+function readJsonStorage(key) {
+  if (!key || typeof window === 'undefined') {
+    return null
   }
 
   try {
-    return JSON.parse(window.localStorage.getItem(widthStorageKey.value) || '{}')
+    return JSON.parse(window.localStorage.getItem(key) || 'null')
   } catch {
-    return {}
+    return null
   }
+}
+
+function writeJsonStorage(key, value) {
+  if (!key || typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Grid van hoat dong neu trinh duyet chan localStorage.
+  }
+}
+
+function readStoredWidths() {
+  return readJsonStorage(widthStorageKey.value) || {}
+}
+
+function readStoredColumnSettings() {
+  return readJsonStorage(columnSettingsStorageKey.value) || {}
+}
+
+function normalizeColumnOrder(order, columnKeys) {
+  const normalized = []
+  const usedKeys = new Set()
+
+  for (const key of Array.isArray(order) ? order : []) {
+    if (columnKeys.has(key) && !usedKeys.has(key)) {
+      normalized.push(key)
+      usedKeys.add(key)
+    }
+  }
+
+  for (const key of columnKeys) {
+    if (!usedKeys.has(key)) {
+      normalized.push(key)
+    }
+  }
+
+  return normalized
 }
 
 function initializeColumns() {
   const storedWidths = readStoredWidths()
+  const storedSettings = readStoredColumnSettings()
   const columnKeys = new Set()
 
   for (const column of props.columns) {
@@ -295,6 +466,20 @@ function initializeColumns() {
     columnWidths[column.key] = Math.max(minWidth, preferredWidth)
   }
 
+  const preferredOrder = Array.isArray(storedSettings.order) ? storedSettings.order : columnOrder.value
+  const preferredHidden = Array.isArray(storedSettings.hidden)
+    ? storedSettings.hidden
+    : Array.from(hiddenColumnKeys.value)
+
+  columnOrder.value = normalizeColumnOrder(preferredOrder, columnKeys)
+  hiddenColumnKeys.value = new Set(
+    preferredHidden.filter((key) => columnKeys.has(key) && columnCanHide(columnByKey.value.get(key)))
+  )
+
+  if (hiddenColumnKeys.value.size >= props.columns.length && props.columns.length > 0) {
+    hiddenColumnKeys.value.delete(props.columns[0].key)
+  }
+
   for (const key of Object.keys(valueFilters)) {
     if (!columnKeys.has(key)) {
       delete valueFilters[key]
@@ -304,12 +489,17 @@ function initializeColumns() {
   if (activeFilterKey.value && !columnKeys.has(activeFilterKey.value)) {
     closeFilterPanel()
   }
+
+  if (clientSort.key && !props.columns.some((column) => sortKeyFor(column) === clientSort.key)) {
+    clientSort.key = ''
+    clientSort.order = ''
+  }
 }
 
 watch(() => props.columns, initializeColumns, { immediate: true })
 
 watch(
-  filteredRows,
+  sortedRows,
   (value) => {
     emit('filtered-count', value.length)
   },
@@ -327,16 +517,14 @@ watch(activeFilterKey, (key, previousKey) => {
   }
 })
 
-const tableStyle = computed(() => ({
-  width: `${props.columns.reduce((total, column) => total + (columnWidths[column.key] || 0), 0)}px`
-}))
-const shellStyle = computed(() => {
-  if (!props.maxHeight) {
-    return {}
+watch(columnMenuOpen, (isOpen, wasOpen) => {
+  if (isOpen && !wasOpen) {
+    bindColumnMenuListeners()
+    return
   }
 
-  return {
-    maxHeight: typeof props.maxHeight === 'number' ? `${props.maxHeight}px` : props.maxHeight
+  if (!isOpen && wasOpen) {
+    unbindColumnMenuListeners()
   }
 })
 
@@ -391,6 +579,8 @@ function isFilterPanelOpen(column) {
 }
 
 function toggleFilterPanel(column) {
+  closeColumnMenu()
+
   if (isFilterPanelOpen(column)) {
     closeFilterPanel()
     return
@@ -400,7 +590,7 @@ function toggleFilterPanel(column) {
 }
 
 function openFilterPanel(column) {
-  const options = getGridColumnValueOptions(props.rows, props.columns, filterCriteria.value, column.key)
+  const options = getGridColumnValueOptions(props.rows, visibleColumns.value, filterCriteria.value, column.key)
   const selected = valueFilters[column.key]
 
   filterSearch.value = ''
@@ -471,15 +661,261 @@ function clearActiveFilter() {
 }
 
 function persistColumnWidths() {
-  if (!widthStorageKey.value || typeof window === 'undefined') {
+  writeJsonStorage(widthStorageKey.value, { ...columnWidths })
+}
+
+function persistColumnSettings() {
+  writeJsonStorage(columnSettingsStorageKey.value, {
+    order: columnOrder.value,
+    hidden: Array.from(hiddenColumnKeys.value)
+  })
+}
+
+function columnCanHide(column) {
+  return column?.hideable !== false
+}
+
+function isColumnVisible(column) {
+  return !hiddenColumnKeys.value.has(column.key)
+}
+
+function isColumnVisibilityLocked(column) {
+  return isColumnVisible(column) && visibleColumns.value.length <= 1
+}
+
+function toggleColumnVisibility(column, checked) {
+  if (!columnCanHide(column)) {
     return
   }
 
-  try {
-    window.localStorage.setItem(widthStorageKey.value, JSON.stringify({ ...columnWidths }))
-  } catch {
-    // Grid vẫn resize bình thường nếu trình duyệt chặn localStorage.
+  const hiddenKeys = new Set(hiddenColumnKeys.value)
+
+  if (checked) {
+    hiddenKeys.delete(column.key)
+  } else if (!isColumnVisibilityLocked(column)) {
+    hiddenKeys.add(column.key)
+    delete valueFilters[column.key]
+
+    if (activeFilterKey.value === column.key) {
+      closeFilterPanel()
+    }
+
+    if (activeSortColumn.value?.key === column.key) {
+      clientSort.key = ''
+      clientSort.order = ''
+    }
   }
+
+  hiddenColumnKeys.value = hiddenKeys
+  persistColumnSettings()
+}
+
+function toggleColumnMenu() {
+  closeFilterPanel()
+  columnMenuOpen.value = !columnMenuOpen.value
+}
+
+function closeColumnMenu() {
+  columnMenuOpen.value = false
+}
+
+function resetColumnSettings() {
+  columnOrder.value = props.columns.map((column) => column.key)
+  hiddenColumnKeys.value = new Set()
+  persistColumnSettings()
+}
+
+function isColumnReorderable(column) {
+  return props.columnReorder && column?.reorderable !== false
+}
+
+function startColumnDrag(event, column) {
+  if (!isColumnReorderable(column) || event.target?.closest?.('button, input, .resize-handle, .excel-filter-panel')) {
+    event.preventDefault()
+    return
+  }
+
+  closeFilterPanel()
+  closeColumnMenu()
+  dragColumnKey.value = column.key
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', column.key)
+}
+
+function dragOverColumn(event, column) {
+  if (!dragColumnKey.value || dragColumnKey.value === column.key) {
+    return
+  }
+
+  event.dataTransfer.dropEffect = 'move'
+  dragOverColumnKey.value = column.key
+}
+
+function leaveColumnDrag(column) {
+  if (dragOverColumnKey.value === column.key) {
+    dragOverColumnKey.value = ''
+  }
+}
+
+function dropColumn(event, targetColumn) {
+  const sourceKey = dragColumnKey.value || event.dataTransfer.getData('text/plain')
+
+  if (sourceKey && sourceKey !== targetColumn.key) {
+    moveColumn(sourceKey, targetColumn.key)
+  }
+
+  stopColumnDrag()
+}
+
+function stopColumnDrag() {
+  dragColumnKey.value = ''
+  dragOverColumnKey.value = ''
+}
+
+function moveColumn(sourceKey, targetKey) {
+  const nextOrder = normalizeColumnOrder(columnOrder.value, new Set(props.columns.map((column) => column.key)))
+  const sourceIndex = nextOrder.indexOf(sourceKey)
+  const targetIndex = nextOrder.indexOf(targetKey)
+
+  if (sourceIndex < 0 || targetIndex < 0) {
+    return
+  }
+
+  const [source] = nextOrder.splice(sourceIndex, 1)
+  nextOrder.splice(targetIndex, 0, source)
+  columnOrder.value = nextOrder
+  persistColumnSettings()
+}
+
+function sortKeyFor(column) {
+  return String(column.sortKey || column.field || column.key)
+}
+
+function isColumnSortable(column) {
+  return props.sortable && column.sortable !== false
+}
+
+function isColumnSorted(column) {
+  return activeSortKey.value === sortKeyFor(column) && Boolean(activeSortOrder.value)
+}
+
+function sortIndicator(column) {
+  if (!isColumnSorted(column)) {
+    return ''
+  }
+
+  return activeSortOrder.value === 'desc' ? '' : ''
+}
+
+function sortTitle(column) {
+  return `${column.label} ${isColumnSorted(column) ? activeSortOrder.value : ''}`.trim()
+}
+
+function ariaSort(column) {
+  if (!isColumnSorted(column)) {
+    return 'none'
+  }
+
+  return activeSortOrder.value === 'desc' ? 'descending' : 'ascending'
+}
+
+function nextSortOrder(column) {
+  if (!isColumnSorted(column)) {
+    return 'asc'
+  }
+
+  return activeSortOrder.value === 'asc' ? 'desc' : 'asc'
+}
+
+function changeSort(column) {
+  const sortKey = sortKeyFor(column)
+  const sortOrder = nextSortOrder(column)
+
+
+  clientSort.key = sortKey
+  clientSort.order = sortOrder
+}
+
+function sortValue(row, column) {
+  if (typeof column.sortValue === 'function') {
+    return column.sortValue(row)
+  }
+
+  return getGridCellValue(row, column)
+}
+
+function isBlankSortValue(value) {
+  return value === null || value === undefined || String(value).trim() === ''
+}
+
+function comparableNumber(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+
+  const normalized = String(value).replace(/,/g, '').trim()
+  const number = Number(normalized)
+
+  return normalized !== '' && Number.isFinite(number) ? number : null
+}
+
+function comparableDate(value) {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.getTime() : null
+  }
+
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const timestamp = Date.parse(value)
+
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function compareSortValues(left, right) {
+  const leftBlank = isBlankSortValue(left)
+  const rightBlank = isBlankSortValue(right)
+
+  if (leftBlank || rightBlank) {
+    if (leftBlank && rightBlank) {
+      return 0
+    }
+
+    return leftBlank ? 1 : -1
+  }
+
+  const leftNumber = comparableNumber(left)
+  const rightNumber = comparableNumber(right)
+
+  if (leftNumber !== null && rightNumber !== null) {
+    return leftNumber - rightNumber
+  }
+
+  const leftDate = comparableDate(left)
+  const rightDate = comparableDate(right)
+
+  if (leftDate !== null && rightDate !== null) {
+    return leftDate - rightDate
+  }
+
+  return String(left).localeCompare(String(right), 'vi-VN', {
+    numeric: true,
+    sensitivity: 'base'
+  })
+}
+
+function stableSortRows(rows, column, order) {
+  const direction = order === 'desc' ? -1 : 1
+
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => {
+      const result = compareSortValues(sortValue(left.row, column), sortValue(right.row, column))
+
+      return result === 0 ? left.index - right.index : result * direction
+    })
+    .map((item) => item.row)
 }
 
 function onColumnResize(event) {
@@ -511,6 +947,7 @@ function startColumnResize(event, column) {
 
   stopColumnResize()
   closeFilterPanel()
+  closeColumnMenu()
   activeResize = {
     key: column.key,
     startX: event.clientX,
@@ -554,6 +991,32 @@ function unbindFilterPanelListeners() {
   filterListenersBound = false
 }
 
+function onColumnMenuKeydown(event) {
+  if (event.key === 'Escape') {
+    closeColumnMenu()
+  }
+}
+
+function bindColumnMenuListeners() {
+  if (columnMenuListenersBound || typeof document === 'undefined') {
+    return
+  }
+
+  document.addEventListener('click', closeColumnMenu)
+  document.addEventListener('keydown', onColumnMenuKeydown)
+  columnMenuListenersBound = true
+}
+
+function unbindColumnMenuListeners() {
+  if (!columnMenuListenersBound || typeof document === 'undefined') {
+    return
+  }
+
+  document.removeEventListener('click', closeColumnMenu)
+  document.removeEventListener('keydown', onColumnMenuKeydown)
+  columnMenuListenersBound = false
+}
+
 function clearFilters() {
   for (const key of Object.keys(valueFilters)) {
     delete valueFilters[key]
@@ -562,20 +1025,122 @@ function clearFilters() {
   closeFilterPanel()
 }
 
-defineExpose({ clearFilters })
+defineExpose({ clearFilters, resetColumnSettings })
 onBeforeUnmount(() => {
   stopColumnResize()
   unbindFilterPanelListeners()
+  unbindColumnMenuListeners()
 })
 </script>
 
 <style scoped>
 .data-grid-shell {
+  position: relative;
   overflow: auto;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--surface-bg);
   scrollbar-gutter: stable;
+}
+
+.grid-toolbar {
+  position: sticky;
+  z-index: 50;
+  top: 0;
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--border-color);
+  padding: 6px 8px;
+  background: var(--surface-bg);
+}
+
+.grid-tool-button {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--surface-bg);
+  color: var(--muted-color);
+  cursor: pointer;
+}
+
+.grid-tool-button:hover,
+.grid-tool-button.is-active {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.column-menu {
+  position: absolute;
+  z-index: 80;
+  top: 46px;
+  right: 8px;
+  box-sizing: border-box;
+  width: 260px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--surface-bg);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  color: var(--text-color);
+}
+
+.column-menu-title {
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+
+.column-menu-list {
+  display: grid;
+  overflow: auto;
+  max-height: 280px;
+  gap: 2px;
+}
+
+.column-menu-option {
+  display: grid;
+  min-height: 30px;
+  align-items: center;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  border-radius: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.column-menu-option:hover {
+  background: var(--table-header-bg);
+}
+
+.column-menu-option input {
+  margin: 0;
+}
+
+.column-menu-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-menu-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.column-menu-footer button {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 9px;
+  background: var(--surface-bg);
+  color: var(--text-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 table {
@@ -590,7 +1155,7 @@ td {
   box-sizing: border-box;
   overflow: hidden;
   border-bottom: 1px solid var(--border-color);
-  padding: 10px 12px;
+  padding: 10px 8px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -612,9 +1177,28 @@ th {
   z-index: 20;
 }
 
+.heading-row th.is-reorderable {
+  cursor: grab;
+}
+
+.heading-row th.is-dragging {
+  opacity: 0.56;
+}
+
+.heading-row th.is-drag-over::before {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--primary-color);
+  content: '';
+}
+
 .data-grid-shell.is-sticky-header thead th {
   position: sticky;
-  top: 0;
+  top: 47px;
   z-index: 8;
 }
 
@@ -623,14 +1207,26 @@ th {
 }
 
 .heading-label {
-  display: block;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
   overflow: hidden;
-  padding-right: 28px;
+  padding-right: 0;
+}
+
+.heading-row th.has-filter .heading-label {
+  padding-right: 18px;
+}
+
+.heading-label-text {
+  overflow: hidden;
+  min-width: 0;
   text-overflow: ellipsis;
 }
 
 .heading-sort-button {
-  width: 100%;
   border: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -643,7 +1239,30 @@ th {
   text-align: left;
 }
 
-.heading-sort-button:hover {
+.heading-sort-button:hover,
+.heading-row th.is-sorted .heading-sort-button {
+  color: var(--primary-color);
+}
+
+.sort-indicator {
+  overflow: hidden;
+  flex: 0 0 0;
+  width: 0;
+  color: var(--muted-color);
+  font-size: 12px;
+  opacity: 0;
+  text-align: center;
+  transition: flex-basis 0.15s ease, opacity 0.15s ease, width 0.15s ease;
+}
+
+.heading-sort-button:hover .sort-indicator,
+.heading-row th.is-sorted .sort-indicator {
+  flex-basis: 12px;
+  width: 12px;
+  opacity: 1;
+}
+
+.heading-row th.is-sorted .sort-indicator {
   color: var(--primary-color);
 }
 
@@ -651,10 +1270,10 @@ th {
   position: absolute;
   z-index: 4;
   top: 50%;
-  right: 10px;
+  right: 4px;
   display: inline-flex;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
@@ -676,9 +1295,9 @@ th {
 .filter-caret {
   width: 0;
   height: 0;
-  border-top: 5px solid currentColor;
-  border-right: 4px solid transparent;
-  border-left: 4px solid transparent;
+  border-top: 4px solid currentColor;
+  border-right: 3px solid transparent;
+  border-left: 3px solid transparent;
 }
 
 .excel-filter-panel {
@@ -751,7 +1370,8 @@ th {
 }
 
 .filter-quick-actions button:not(:disabled):hover,
-.filter-footer-button:hover {
+.filter-footer-button:hover,
+.column-menu-footer button:hover {
   border-color: var(--primary-color);
 }
 

@@ -9,8 +9,8 @@ function buildKhsxQuery(params) {
 
 // Lấy dữ liệu KHSX theo 1 trong 2 kiểu lọc ngày (có thể kết hợp cả 2, backend tự AND lại):
 // - snapshotStartDate/snapshotEndDate: theo ngày nhập (snapshot), không nhầm với StartDate/DueDate của operation.
-// - jobStartDateFrom/jobStartDateTo: theo JobHead_StartDate.
-// params: { snapshotStartDate, snapshotEndDate, jobStartDateFrom, jobStartDateTo } (định dạng 'YYYY-MM-DD')
+// - JobOper_StartDateFrom/JobOper_StartDateTo: theo cột JobOper_StartDate.
+// params: { snapshotStartDate, snapshotEndDate, JobOper_StartDateFrom, JobOper_StartDateTo } (định dạng 'YYYY-MM-DD')
 export function getKhsx(params = {}) {
   return apiClient.get('/khsx', { params: buildKhsxQuery(params) })
 }
